@@ -43,13 +43,17 @@ export async function POST(req: Request) {
     )
   }
 
+  const USER_ACTIONABLE = ['insufficient credits', 'API key is invalid', 'rate limit']
+
   let report
   try {
     report = await generateReport(body as GenerateRequest)
   } catch (err) {
     console.error('[generate] Anthropic error:', err)
+    const message = err instanceof Error ? err.message : ''
+    const isUserActionable = USER_ACTIONABLE.some((s) => message.includes(s))
     return NextResponse.json(
-      { error: 'Report generation failed. Please try again.' },
+      { error: isUserActionable ? message : 'Report generation failed. Please try again.' },
       { status: 502 }
     )
   }
