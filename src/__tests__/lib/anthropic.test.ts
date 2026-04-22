@@ -14,7 +14,7 @@ jest.mock('@anthropic-ai/sdk', () => ({
   ),
 }))
 
-import { parseReport, parseProposals, generateCandidates } from '@/lib/anthropic'
+import { parseReport, parseProposals, generateCandidates, synthesiseReport } from '@/lib/anthropic'
 import type { ReportData } from '@/lib/types'
 
 const VALID_REPORT: ReportData = {
@@ -135,6 +135,93 @@ describe('generateCandidates', () => {
 
     await expect(
       generateCandidates({ description: 'x', personality: 'y', constraints: '', geography: 'z' })
+    ).rejects.toThrow('no text block')
+  })
+})
+
+import type { TrademarkCheckResult } from '@/lib/signa'
+import type { DomainAvailability } from '@/lib/types'
+
+const MOCK_TRADEMARK: TrademarkCheckResult = {
+  candidateName: 'Brand0',
+  risk: 'low',
+  notes: 'No conflicts found.',
+  sources: ['Signa (USPTO + EUIPO)'],
+}
+
+const MOCK_DOMAINS: DomainAvailability = {
+  com: 'likely available',
+  io: 'uncertain',
+  co: 'likely taken',
+  alternates: [],
+}
+
+const VERIFIED = Array.from({ length: 8 }, (_, i) => ({
+  name: `Brand${i}`,
+  style: 'invented' as const,
+  rationale: 'Good rationale.',
+  trademark: { ...MOCK_TRADEMARK, candidateName: `Brand${i}` },
+  domains: MOCK_DOMAINS,
+}))
+
+const MOCK_FULL_REPORT: ReportData = {
+  summary: 'A SaaS tool for developers.',
+  candidates: VERIFIED.map((v) => ({
+    name: v.name,
+    style: v.style,
+    rationale: v.rationale,
+    trademarkRisk: 'low',
+    trademarkNotes: 'No conflicts found.',
+    domains: v.domains,
+  })),
+  topPicks: [
+    { name: 'Brand0', reasoning: 'Best option.', nextSteps: 'File USPTO application.' },
+    { name: 'Brand1', reasoning: 'Second best.', nextSteps: 'Check EUIPO.' },
+    { name: 'Brand2', reasoning: 'Third option.', nextSteps: 'Check domain.' },
+  ],
+  recommendation: 'Go with Brand0.',
+}
+
+describe('synthesiseReport', () => {
+  beforeEach(() => {
+    mockCreate = jest.fn()
+  })
+
+  it('returns validated ReportData on success', async () => {
+    mockCreate.mockResolvedValue(makeTextResponse(JSON.stringify(MOCK_FULL_REPORT)))
+
+    const result = await synthesiseReport(
+      { description: 'A SaaS tool', personality: 'Bold / contrarian', constraints: '', geography: 'Global' },
+      VERIFIED
+    )
+
+    expect(result.candidates).toHaveLength(8)
+    expect(result.topPicks).toHaveLength(3)
+    expect(result.summary).toBe('A SaaS tool for developers.')
+  })
+
+  it('passes verified trademark and domain data in the user message', async () => {
+    mockCreate.mockResolvedValue(makeTextResponse(JSON.stringify(MOCK_FULL_REPORT)))
+
+    await synthesiseReport(
+      { description: 'A SaaS tool', personality: 'Bold / contrarian', constraints: '', geography: 'Global' },
+      VERIFIED
+    )
+
+    const callArgs = mockCreate.mock.calls[0][0]
+    expect(callArgs.messages[0].content).toContain('Brand0')
+    expect(callArgs.messages[0].content).toContain('No conflicts found')
+    expect(callArgs.messages[0].content).toContain('likely available')
+  })
+
+  it('throws when model returns no text block', async () => {
+    mockCreate.mockResolvedValue({ content: [] })
+
+    await expect(
+      synthesiseReport(
+        { description: 'x', personality: 'y', constraints: '', geography: 'z' },
+        VERIFIED
+      )
     ).rejects.toThrow('no text block')
   })
 })

@@ -173,6 +173,103 @@ Generate brand name candidates as a JSON array.`
   }
 }
 
+interface VerifiedCandidate extends CandidateProposal {
+  trademark: import('./signa').TrademarkCheckResult
+  domains: import('./types').DomainAvailability
+}
+
+const SYNTHESISE_REPORT_PROMPT = `You are a brand strategy expert. You have been given a list of brand name candidates with verified trademark search results and real domain availability data. Your task is to produce a final, comprehensive brand name report.
+
+# Instructions
+- Use the trademark data provided to assess risk accurately — cite specific conflicts or explain why risk is low
+- Use the domain data provided to fill domain availability — do NOT override verified DNS results
+- For domains marked as taken, suggest 2-3 creative alternate domain strings (e.g. getbrandname.com, trybrandname.io)
+- Select exactly 3 topPicks — the candidates with the best combined trademark safety and domain availability
+- Rank the full candidates array from most to least viable
+- Write actionable nextSteps for each topPick (e.g. "File USPTO application in Nice Class 42", "Register acmely.io immediately")
+
+# Output
+Respond with ONLY a valid JSON object. No markdown, no preamble. Use this schema exactly:
+
+{
+  "summary": "1-2 sentence recap of what the user is building",
+  "candidates": [
+    {
+      "name": "string — must match a provided candidate name exactly",
+      "style": "descriptive | invented | metaphorical | acronym | compound",
+      "rationale": "2-3 sentences",
+      "trademarkRisk": "low | moderate | high",
+      "trademarkNotes": "1-2 sentences citing Signa findings",
+      "domains": {
+        "com": "likely available | likely taken | uncertain",
+        "io": "likely available | likely taken | uncertain",
+        "co": "likely available | likely taken | uncertain",
+        "alternates": ["string"]
+      }
+    }
+  ],
+  "topPicks": [
+    { "name": "must match a candidate name", "reasoning": "why this is safest", "nextSteps": "specific actions" }
+  ],
+  "recommendation": "1-2 sentences on the top 1-2 to pursue first"
+}`
+
+export async function synthesiseReport(
+  req: GenerateRequest,
+  verified: VerifiedCandidate[]
+): Promise<ReportData> {
+  const candidateLines = verified.map((v) =>
+    `Name: ${v.name}
+Style: ${v.style}
+Rationale: ${v.rationale}
+Trademark (Signa): ${v.trademark.risk} risk — ${v.trademark.notes}
+Domain .com: ${v.domains.com}
+Domain .io: ${v.domains.io}
+Domain .co: ${v.domains.co}`
+  ).join('\n\n---\n\n')
+
+  const userMessage = `Product: ${req.description}
+Brand personality: ${req.personality}
+Constraints: ${req.constraints || 'none'}
+Primary market: ${req.geography}
+
+Verified candidates:
+
+${candidateLines}
+
+Produce the final brand name report as JSON.`
+
+  try {
+    const response = await client.messages.create({
+      model: 'claude-sonnet-4-6',
+      max_tokens: 4000,
+      system: SYNTHESISE_REPORT_PROMPT,
+      messages: [{ role: 'user', content: userMessage }],
+    })
+
+    const text = response.content
+      .filter((b) => b.type === 'text')
+      .map((b) => (b as { type: 'text'; text: string }).text)
+      .join('\n')
+      .trim()
+
+    if (!text) throw new Error('Model returned no text block — likely ended on a tool call')
+
+    return parseReport(text)
+  } catch (err) {
+    if (err instanceof Anthropic.RateLimitError) {
+      throw new Error('Anthropic rate limit reached. Please try again in a moment.')
+    }
+    if (err instanceof Anthropic.AuthenticationError) {
+      throw new Error('Anthropic API key is invalid.')
+    }
+    if (err instanceof Anthropic.APIError) {
+      throw new Error(`Anthropic API error ${err.status}: ${err.message}`)
+    }
+    throw err
+  }
+}
+
 const WEB_SEARCH_TOOL: WebSearchTool20250305 = { type: 'web_search_20250305', name: 'web_search' }
 
 export async function generateReport(req: GenerateRequest): Promise<ReportData> {
