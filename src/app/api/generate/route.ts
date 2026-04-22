@@ -47,7 +47,10 @@ export async function POST(req: Request) {
   try {
     report = await generateReport(body as GenerateRequest)
   } catch (err) {
-    console.error('[generate] report generation failed:', err)
+    console.error(
+      '[generate] report generation failed:',
+      err instanceof Error ? err.message : String(err)
+    )
     const message = err instanceof Error ? err.message : ''
     const isCapacity = message.includes('rate limit') || message.includes('insufficient credits')
     return NextResponse.json(

@@ -28,7 +28,7 @@ export async function POST(req: Request) {
 
     const reportId = session.metadata?.reportId
     if (!reportId) {
-      console.error('[webhook] Missing reportId in session metadata', session.id)
+      console.error('[webhook] Missing reportId in session metadata')
       return NextResponse.json({ received: true })
     }
   }
