@@ -225,3 +225,62 @@ describe('synthesiseReport', () => {
     ).rejects.toThrow('no text block')
   })
 })
+
+jest.mock('@/lib/signa', () => ({
+  checkAllTrademarks: jest.fn(),
+}))
+jest.mock('@/lib/dns', () => ({
+  checkAllDomains: jest.fn(),
+}))
+
+import { checkAllTrademarks } from '@/lib/signa'
+import { checkAllDomains } from '@/lib/dns'
+import { generateReport } from '@/lib/anthropic'
+
+describe('generateReport orchestrator', () => {
+  beforeEach(() => {
+    mockCreate = jest.fn()
+    ;(checkAllTrademarks as jest.Mock).mockResolvedValue(new Map())
+    ;(checkAllDomains as jest.Mock).mockResolvedValue(new Map())
+  })
+
+  it('calls generateCandidates then verification then synthesiseReport', async () => {
+    // Step 1 returns proposals
+    mockCreate.mockResolvedValueOnce(
+      makeTextResponse(JSON.stringify(MOCK_PROPOSALS))
+    )
+    // Step 3 returns full report
+    mockCreate.mockResolvedValueOnce(
+      makeTextResponse(JSON.stringify(MOCK_FULL_REPORT))
+    )
+
+    const result = await generateReport({
+      description: 'A SaaS tool',
+      personality: 'Bold / contrarian',
+      constraints: '',
+      geography: 'Global',
+    })
+
+    expect(checkAllTrademarks).toHaveBeenCalledWith(MOCK_PROPOSALS, 42)
+    expect(checkAllDomains).toHaveBeenCalledWith(MOCK_PROPOSALS)
+    expect(mockCreate).toHaveBeenCalledTimes(2)
+    expect(result.candidates).toHaveLength(8)
+  })
+
+  it('proceeds with uncertain data when Signa and DNS both fail', async () => {
+    ;(checkAllTrademarks as jest.Mock).mockRejectedValue(new Error('Signa down'))
+    ;(checkAllDomains as jest.Mock).mockRejectedValue(new Error('DNS down'))
+
+    mockCreate.mockResolvedValueOnce(makeTextResponse(JSON.stringify(MOCK_PROPOSALS)))
+    mockCreate.mockResolvedValueOnce(makeTextResponse(JSON.stringify(MOCK_FULL_REPORT)))
+
+    const result = await generateReport({
+      description: 'A SaaS tool',
+      personality: 'Bold / contrarian',
+      constraints: '',
+      geography: 'Global',
+    })
+
+    expect(result.candidates).toHaveLength(8)
+  })
+})
