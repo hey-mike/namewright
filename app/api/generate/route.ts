@@ -5,9 +5,8 @@ import { saveReport } from '@/lib/kv'
 import { validateEnv } from '@/lib/env'
 import type { GenerateRequest } from '@/lib/types'
 
-validateEnv()
-
 export async function POST(req: Request) {
+  validateEnv()
   const body = await req.json() as Partial<GenerateRequest>
 
   if (!body.description || !body.personality || !body.geography) {
