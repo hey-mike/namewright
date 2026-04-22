@@ -16,14 +16,18 @@ export interface TrademarkCheckResult {
 export async function checkTrademark(candidateName: string, niceClass: number): Promise<TrademarkCheckResult> {
   const signa = new Signa({ api_key: process.env.SIGNA_API_KEY })
 
-  const results = await signa.trademarks.list({
-    q: candidateName,
-    offices: 'USPTO,EUIPO',
+  const results = await signa.search.query({
+    query: candidateName,
+    strategies: ['exact', 'phonetic', 'fuzzy'],
+    filters: {
+      offices: ['USPTO', 'EUIPO'],
+      nice_classes: [niceClass],
+    },
     limit: 10,
   })
 
-  const conflicts = results.data?.filter((tm: { name?: string }) =>
-    tm.name?.toLowerCase().includes(candidateName.toLowerCase())
+  const conflicts = results.data?.filter((tm) =>
+    tm.mark_text?.toLowerCase().includes(candidateName.toLowerCase())
   ) ?? []
 
   if (conflicts.length === 0) {
