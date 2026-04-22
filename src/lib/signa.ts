@@ -32,6 +32,8 @@ export async function checkTrademark(
   niceClass: number
 ): Promise<TrademarkCheckResult> {
   try {
+    // search.query() calls POST /v1/trademarks/search (deprecated, sunset 2026-10-01).
+    // Migrate to signa.trademarks.list({ q }) once the SDK exposes `q` in TrademarkListParams.
     const results = await getSigna().search.query({
       query: candidateName,
       strategies: ['exact', 'phonetic', 'fuzzy'],
