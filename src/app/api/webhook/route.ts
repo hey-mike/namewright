@@ -9,13 +9,14 @@ export async function POST(req: Request) {
   const sig = req.headers.get('stripe-signature') ?? ''
 
   const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET
-  if (!webhookSecret) throw new Error('STRIPE_WEBHOOK_SECRET is not set')
 
   let event
   try {
+    if (!webhookSecret) throw new Error('STRIPE_WEBHOOK_SECRET is not set')
     event = stripe().webhooks.constructEvent(body, sig, webhookSecret)
-  } catch {
-    return NextResponse.json({ error: 'Invalid signature' }, { status: 400 })
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Invalid signature'
+    return NextResponse.json({ error: message }, { status: 400 })
   }
 
   if (event.type === 'checkout.session.completed') {

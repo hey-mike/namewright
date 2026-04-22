@@ -7,7 +7,12 @@ import type { GenerateRequest } from '@/lib/types'
 
 export async function POST(req: Request) {
   validateEnv()
-  const body = (await req.json()) as Partial<GenerateRequest>
+  let body: Partial<GenerateRequest>
+  try {
+    body = (await req.json()) as Partial<GenerateRequest>
+  } catch {
+    return NextResponse.json({ error: 'Invalid request body' }, { status: 400 })
+  }
 
   if (!body.description || !body.personality || !body.geography) {
     return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })

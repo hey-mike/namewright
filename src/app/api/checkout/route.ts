@@ -5,7 +5,12 @@ import { validateEnv } from '@/lib/env'
 
 export async function POST(req: Request) {
   validateEnv()
-  const { reportId } = await req.json()
+  let reportId: unknown
+  try {
+    ;({ reportId } = await req.json())
+  } catch {
+    return NextResponse.json({ error: 'Invalid request body' }, { status: 400 })
+  }
 
   if (!reportId) {
     return NextResponse.json({ error: 'reportId is required' }, { status: 400 })

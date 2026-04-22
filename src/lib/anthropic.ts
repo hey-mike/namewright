@@ -45,8 +45,11 @@ function rethrowAnthropicError(err: unknown): never {
   if (err instanceof Anthropic.RateLimitError)
     throw new Error('Anthropic rate limit reached. Please try again in a moment.')
   if (err instanceof Anthropic.AuthenticationError) throw new Error('Anthropic API key is invalid.')
-  if (err instanceof Anthropic.APIError)
+  if (err instanceof Anthropic.APIError) {
+    if (err.status === 400 && err.message.includes('credit balance'))
+      throw new Error('Anthropic account has insufficient credits. Please top up to continue.')
     throw new Error(`Anthropic API error ${err.status}: ${err.message}`)
+  }
   throw err
 }
 

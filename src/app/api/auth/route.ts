@@ -16,7 +16,8 @@ export async function GET(request: NextRequest) {
   let stripeSession
   try {
     stripeSession = await stripe().checkout.sessions.retrieve(sessionId)
-  } catch {
+  } catch (err) {
+    console.error('[auth] Stripe session retrieve failed:', err)
     return NextResponse.redirect(new URL('/', request.url))
   }
 
