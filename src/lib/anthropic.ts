@@ -1,6 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk'
 import type { WebSearchTool20250305 } from '@anthropic-ai/sdk/resources/messages/messages'
-import type { ReportData, GenerateRequest } from './types'
+import type { ReportData, GenerateRequest, CandidateProposal } from './types'
 
 const client = new Anthropic()
 
@@ -45,6 +45,38 @@ You MUST respond with ONLY a valid JSON object. No markdown fences, no preamble,
 
 Rank candidates array from most to least viable. Return 8-12 candidates and exactly 3 topPicks.`
 
+const VALID_STYLES = new Set(['descriptive', 'invented', 'metaphorical', 'acronym', 'compound'])
+const VALID_RISKS = new Set(['low', 'moderate', 'high'])
+const VALID_DOMAIN_STATUS = new Set(['likely available', 'likely taken', 'uncertain'])
+
+function validateReportData(data: unknown): ReportData {
+  if (!data || typeof data !== 'object') throw new Error('Report is not an object')
+  const d = data as Record<string, unknown>
+
+  if (typeof d.summary !== 'string' || !d.summary) throw new Error('Missing or invalid summary')
+  if (typeof d.recommendation !== 'string') throw new Error('Missing recommendation')
+  if (!Array.isArray(d.candidates) || d.candidates.length === 0) throw new Error('candidates must be a non-empty array')
+  if (!Array.isArray(d.topPicks)) throw new Error('topPicks must be an array')
+
+  for (const [i, c] of (d.candidates as unknown[]).entries()) {
+    if (!c || typeof c !== 'object') throw new Error(`candidates[${i}] is not an object`)
+    const candidate = c as Record<string, unknown>
+    if (typeof candidate.name !== 'string' || !candidate.name) throw new Error(`candidates[${i}].name missing`)
+    if (!VALID_STYLES.has(candidate.style as string)) throw new Error(`candidates[${i}].style invalid: ${candidate.style}`)
+    if (!VALID_RISKS.has(candidate.trademarkRisk as string)) throw new Error(`candidates[${i}].trademarkRisk invalid: ${candidate.trademarkRisk}`)
+    if (typeof candidate.rationale !== 'string') throw new Error(`candidates[${i}].rationale missing`)
+    if (typeof candidate.trademarkNotes !== 'string') throw new Error(`candidates[${i}].trademarkNotes missing`)
+    const domains = candidate.domains as Record<string, unknown>
+    if (!domains || typeof domains !== 'object') throw new Error(`candidates[${i}].domains missing`)
+    for (const tld of ['com', 'io', 'co'] as const) {
+      if (!VALID_DOMAIN_STATUS.has(domains[tld] as string)) throw new Error(`candidates[${i}].domains.${tld} invalid`)
+    }
+    if (!Array.isArray(domains.alternates)) throw new Error(`candidates[${i}].domains.alternates missing`)
+  }
+
+  return d as unknown as ReportData
+}
+
 export function parseReport(text: string): ReportData {
   const stripped = text
     .replace(/^```json\s*/i, '')
@@ -56,7 +88,26 @@ export function parseReport(text: string): ReportData {
   const end = stripped.lastIndexOf('}')
   if (start === -1 || end === -1) throw new Error('No JSON object found in response')
 
-  return JSON.parse(stripped.slice(start, end + 1)) as ReportData
+  const parsed = JSON.parse(stripped.slice(start, end + 1))
+  return validateReportData(parsed)
+}
+
+export function parseProposals(text: string): CandidateProposal[] {
+  const stripped = text
+    .replace(/^```json\s*/i, '')
+    .replace(/^```\s*/i, '')
+    .replace(/\s*```$/i, '')
+    .trim()
+
+  const start = stripped.indexOf('[')
+  const end = stripped.lastIndexOf(']')
+  if (start === -1 || end === -1) throw new Error('No JSON array found in response')
+
+  const parsed = JSON.parse(stripped.slice(start, end + 1))
+  if (!Array.isArray(parsed)) throw new Error('Response is not an array')
+  if (parsed.length < 5) throw new Error(`Too few candidates: ${parsed.length}`)
+
+  return parsed as CandidateProposal[]
 }
 
 const WEB_SEARCH_TOOL: WebSearchTool20250305 = { type: 'web_search_20250305', name: 'web_search' }
