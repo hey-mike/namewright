@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { randomUUID } from 'crypto'
+import Anthropic from '@anthropic-ai/sdk'
 import { generateReport } from '@/lib/anthropic'
 import { saveReport } from '@/lib/kv'
 import { validateEnv } from '@/lib/env'
@@ -51,11 +52,14 @@ export async function POST(req: Request) {
       '[generate] report generation failed:',
       err instanceof Error ? err.message : String(err)
     )
-    const message = err instanceof Error ? err.message : ''
     let userError = 'Report generation failed. Please try again.'
-    if (message.includes('rate limit'))
+    if (err instanceof Anthropic.RateLimitError)
       userError = 'We are experiencing high demand. Please try again in a moment.'
-    if (message.includes('insufficient credits'))
+    else if (
+      err instanceof Anthropic.APIError &&
+      err.status === 400 &&
+      err.message.includes('credit balance')
+    )
       userError = 'Service temporarily unavailable. Please try again later.'
     return NextResponse.json({ error: userError }, { status: 502 })
   }

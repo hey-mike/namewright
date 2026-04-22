@@ -42,13 +42,6 @@ function extractJson(text: string, open: '{' | '['): unknown {
 }
 
 function rethrowAnthropicError(err: unknown): never {
-  if (err instanceof Anthropic.RateLimitError) throw new Error('rate limit')
-  if (err instanceof Anthropic.AuthenticationError) throw new Error('authentication error')
-  if (err instanceof Anthropic.APIError) {
-    if (err.status === 400 && err.message.includes('credit balance'))
-      throw new Error('insufficient credits')
-    throw new Error(`API error ${err.status}`)
-  }
   throw err
 }
 
