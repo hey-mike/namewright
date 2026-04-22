@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import type Stripe from 'stripe'
 import stripe from '@/lib/stripe'
 import { validateEnv } from '@/lib/env'
+import logger from '@/lib/logger'
 
 export async function POST(req: Request) {
   validateEnv()
@@ -28,7 +29,7 @@ export async function POST(req: Request) {
 
     const reportId = session.metadata?.reportId
     if (!reportId) {
-      console.error('[webhook] Missing reportId in session metadata')
+      logger.error({ route: 'webhook' }, 'Missing reportId in session metadata')
       return NextResponse.json({ received: true })
     }
   }

@@ -3,6 +3,7 @@ import { TLDS } from './types'
 import type { ReportData, GenerateRequest, CandidateProposal } from './types'
 import { checkAllTrademarks, TRADEMARK_UNAVAILABLE_NOTES } from './signa'
 import { checkAllDomains } from './dns'
+import logger from './logger'
 
 const client = new Anthropic()
 
@@ -274,13 +275,19 @@ export async function generateReport(req: GenerateRequest): Promise<ReportData> 
   if (trademarkResult.status === 'fulfilled') {
     trademarkMap = trademarkResult.value
   } else {
-    console.error('[generateReport] trademark verification failed:', trademarkResult.reason)
+    logger.warn(
+      { err: String(trademarkResult.reason) },
+      'trademark verification failed — degrading to uncertain'
+    )
   }
 
   if (domainResult.status === 'fulfilled') {
     domainMap = domainResult.value
   } else {
-    console.error('[generateReport] domain verification failed:', domainResult.reason)
+    logger.warn(
+      { err: String(domainResult.reason) },
+      'domain verification failed — degrading to uncertain'
+    )
   }
 
   if (trademarkResult.status === 'rejected' && domainResult.status === 'rejected') {

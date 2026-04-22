@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import Stripe from 'stripe'
 import stripe from '@/lib/stripe'
 import { validateEnv } from '@/lib/env'
+import logger from '@/lib/logger'
 
 export async function POST(req: Request) {
   validateEnv()
@@ -47,7 +48,7 @@ export async function POST(req: Request) {
     })
   } catch (err) {
     if (err instanceof Stripe.errors.StripeError) {
-      console.error('[checkout] Stripe error:', err.message)
+      logger.error({ route: 'checkout', err: err.message }, 'Stripe session create failed')
       return NextResponse.json(
         { error: 'Payment setup failed. Please try again.' },
         { status: 502 }

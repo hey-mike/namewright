@@ -1,4 +1,5 @@
 import Signa from '@signa-so/sdk'
+import logger from './logger'
 
 export type TrademarkRisk = 'low' | 'moderate' | 'high' | 'uncertain'
 
@@ -60,7 +61,10 @@ export async function checkTrademark(
       sources: ['Signa (USPTO + EUIPO)'],
     }
   } catch (err) {
-    console.error(`[signa] checkTrademark failed for "${candidateName}":`, err)
+    logger.warn(
+      { candidateName, err: err instanceof Error ? err.message : String(err) },
+      'trademark check failed — degrading to uncertain'
+    )
     return {
       candidateName,
       risk: 'uncertain',

@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 import { kv } from '@vercel/kv'
+import logger from '@/lib/logger'
 
 const RATE_LIMIT_WINDOW_S = 60
 const RATE_LIMIT_MAX = 5
@@ -30,7 +31,10 @@ export async function proxy(request: NextRequest) {
     }
   } catch (err) {
     // KV unavailable — fail open so a KV outage doesn't take down the API
-    console.error('[proxy] KV rate limit check failed:', err)
+    logger.warn(
+      { err: err instanceof Error ? err.message : String(err) },
+      'KV rate limit check failed — failing open'
+    )
   }
 
   return NextResponse.next()

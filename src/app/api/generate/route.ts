@@ -4,10 +4,14 @@ import Anthropic from '@anthropic-ai/sdk'
 import { generateReport } from '@/lib/anthropic'
 import { saveReport } from '@/lib/kv'
 import { validateEnv } from '@/lib/env'
+import logger from '@/lib/logger'
 import type { GenerateRequest } from '@/lib/types'
 
 export async function POST(req: Request) {
   validateEnv()
+  const requestId = randomUUID()
+  const log = logger.child({ requestId, route: 'generate' })
+
   let body: Partial<GenerateRequest>
   try {
     body = (await req.json()) as Partial<GenerateRequest>
@@ -44,23 +48,29 @@ export async function POST(req: Request) {
     )
   }
 
+  log.info('report generation started')
+
   let report
   try {
     report = await generateReport(body as GenerateRequest)
   } catch (err) {
-    console.error(
-      '[generate] report generation failed:',
-      err instanceof Error ? err.message : String(err)
-    )
     let userError = 'Report generation failed. Please try again.'
-    if (err instanceof Anthropic.RateLimitError)
+    if (err instanceof Anthropic.RateLimitError) {
+      log.warn({ err: err.message }, 'rate limited by Anthropic')
       userError = 'We are experiencing high demand. Please try again in a moment.'
-    else if (
+    } else if (
       err instanceof Anthropic.APIError &&
       err.status === 400 &&
       err.message.includes('credit balance')
-    )
+    ) {
+      log.error({ err: err.message }, 'Anthropic credit balance exhausted')
       userError = 'Service temporarily unavailable. Please try again later.'
+    } else {
+      log.error(
+        { err: err instanceof Error ? err.message : String(err) },
+        'report generation failed'
+      )
+    }
     return NextResponse.json({ error: userError }, { status: 502 })
   }
 
@@ -69,9 +79,11 @@ export async function POST(req: Request) {
   try {
     await saveReport(reportId, report)
   } catch (err) {
-    console.error('[generate] KV save error:', err)
+    log.error({ err: err instanceof Error ? err.message : String(err) }, 'KV save failed')
     return NextResponse.json({ error: 'Failed to save report. Please try again.' }, { status: 503 })
   }
+
+  log.info({ reportId, candidateCount: report.candidates.length }, 'report generation completed')
 
   return NextResponse.json({
     reportId,

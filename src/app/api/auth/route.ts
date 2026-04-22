@@ -3,9 +3,11 @@ import stripe from '@/lib/stripe'
 import { signSession } from '@/lib/session'
 import { validateEnv } from '@/lib/env'
 import { getReport } from '@/lib/kv'
+import logger from '@/lib/logger'
 
 export async function GET(request: NextRequest) {
   validateEnv()
+  const log = logger.child({ route: 'auth' })
   const sessionId = request.nextUrl.searchParams.get('session_id')
   const reportId = request.nextUrl.searchParams.get('report_id')
 
@@ -17,7 +19,10 @@ export async function GET(request: NextRequest) {
   try {
     stripeSession = await stripe().checkout.sessions.retrieve(sessionId)
   } catch (err) {
-    console.error('[auth] Stripe session retrieve failed:', err)
+    log.error(
+      { err: err instanceof Error ? err.message : String(err) },
+      'Stripe session retrieve failed'
+    )
     return NextResponse.redirect(new URL('/', request.url))
   }
 
