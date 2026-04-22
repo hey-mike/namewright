@@ -67,6 +67,14 @@ export function parseProposals(text: string): CandidateProposal[] {
   if (!Array.isArray(parsed)) throw new Error('Response is not an array')
   if (parsed.length < 5) throw new Error(`Too few candidates: ${parsed.length}`)
 
+  for (const [i, c] of (parsed as unknown[]).entries()) {
+    if (!c || typeof c !== 'object') throw new Error(`candidates[${i}] is not an object`)
+    const candidate = c as Record<string, unknown>
+    if (typeof candidate.name !== 'string' || !candidate.name) throw new Error(`candidates[${i}].name missing`)
+    if (!VALID_STYLES.has(candidate.style as string)) throw new Error(`candidates[${i}].style invalid: ${candidate.style}`)
+    if (typeof candidate.rationale !== 'string' || !candidate.rationale) throw new Error(`candidates[${i}].rationale missing`)
+  }
+
   return parsed as CandidateProposal[]
 }
 
@@ -239,12 +247,14 @@ export async function generateReport(req: GenerateRequest): Promise<ReportData> 
   let domainMap: Map<string, import('./types').DomainAvailability> = new Map()
 
   try {
-    ;[trademarkMap, domainMap] = await Promise.all([
-      checkAllTrademarks(proposals, 42),
-      checkAllDomains(proposals),
-    ])
+    trademarkMap = await checkAllTrademarks(proposals, 42)
   } catch (err) {
-    console.error('[generateReport] verification failed, proceeding with empty data:', err)
+    console.error('[generateReport] trademark verification failed, proceeding with empty data:', err)
+  }
+  try {
+    domainMap = await checkAllDomains(proposals)
+  } catch (err) {
+    console.error('[generateReport] domain verification failed, proceeding with empty data:', err)
   }
 
   // Step 3: Merge into VerifiedCandidate[]
