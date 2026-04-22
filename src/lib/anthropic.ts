@@ -110,6 +110,69 @@ export function parseProposals(text: string): CandidateProposal[] {
   return parsed as CandidateProposal[]
 }
 
+const GENERATE_CANDIDATES_PROMPT = `You are a brand naming specialist. Generate 8-12 brand name candidates for the product described.
+
+# Instructions
+- Vary naming styles: descriptive, invented, metaphorical, acronym, compound.
+- Weight styles toward what fits the brand personality:
+  - "Serious / technical" or "Utilitarian / direct" → favour descriptive and compound; avoid metaphorical
+  - "Playful / approachable" or "Bold / contrarian" → favour invented and metaphorical
+  - "Premium / refined" → favour invented and compound
+- Each name must be: pronounceable, distinctive, not too close to famous brands, not generic.
+- For each candidate write 2-3 sentences of strategic rationale explaining why it fits.
+
+# Output
+Respond with ONLY a valid JSON array. No markdown, no preamble. Schema:
+[
+  {
+    "name": "string",
+    "style": "descriptive | invented | metaphorical | acronym | compound",
+    "rationale": "2-3 sentences"
+  }
+]
+
+Return 8-12 items. No trademark or domain data — that is handled separately.`
+
+export async function generateCandidates(req: GenerateRequest): Promise<CandidateProposal[]> {
+  const userMessage = `Product: ${req.description}
+Brand personality: ${req.personality}
+Constraints: ${req.constraints || 'none'}
+Primary market: ${req.geography}
+
+Generate brand name candidates as a JSON array.`
+
+  try {
+    const response = await client.messages.create({
+      model: 'claude-sonnet-4-6',
+      max_tokens: 2000,
+      system: GENERATE_CANDIDATES_PROMPT,
+      messages: [{ role: 'user', content: userMessage }],
+      tools: undefined,
+    })
+
+    const text = response.content
+      .filter((b) => b.type === 'text')
+      .map((b) => (b as { type: 'text'; text: string }).text)
+      .join('\n')
+      .trim()
+
+    if (!text) throw new Error('Model returned no text block — likely ended on a tool call')
+
+    return parseProposals(text)
+  } catch (err) {
+    if (err instanceof Anthropic.RateLimitError) {
+      throw new Error('Anthropic rate limit reached. Please try again in a moment.')
+    }
+    if (err instanceof Anthropic.AuthenticationError) {
+      throw new Error('Anthropic API key is invalid.')
+    }
+    if (err instanceof Anthropic.APIError) {
+      throw new Error(`Anthropic API error ${err.status}: ${err.message}`)
+    }
+    throw err
+  }
+}
+
 const WEB_SEARCH_TOOL: WebSearchTool20250305 = { type: 'web_search_20250305', name: 'web_search' }
 
 export async function generateReport(req: GenerateRequest): Promise<ReportData> {
