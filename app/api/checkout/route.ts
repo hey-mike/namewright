@@ -26,7 +26,7 @@ export async function POST(req: Request) {
       },
     ],
     metadata: { reportId },
-    success_url: `${appUrl}/results?report_id=${reportId}&session_id={CHECKOUT_SESSION_ID}`,
+    success_url: `${appUrl}/api/auth?report_id=${reportId}&session_id={CHECKOUT_SESSION_ID}`,
     cancel_url: `${appUrl}/preview?report_id=${reportId}`,
   })
 

@@ -32,7 +32,7 @@ export default async function ResultsPage({ searchParams }: Props) {
           <div style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--color-accent)' }} />
           <span className="display text-sm font-bold" style={{ letterSpacing: '-0.02em', color: 'var(--color-text-1)' }}>Namewright</span>
         </div>
-        <span className="mono text-[11px] ink-softer">{report.candidates.length} candidates · USPTO + EUIPO + WIPO verified</span>
+        <span className="mono text-[11px] ink-softer">{report.candidates.length} candidates · trademark research included</span>
       </header>
       <FullReport report={report} />
     </div>

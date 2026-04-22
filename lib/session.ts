@@ -11,7 +11,7 @@ export async function signSession(reportId: string, paid: boolean): Promise<stri
   return new SignJWT({ reportId, paid })
     .setProtectedHeader({ alg: 'HS256' })
     .setIssuedAt()
-    .setExpirationTime('2h')
+    .setExpirationTime('24h')
     .sign(getSecret())
 }
 
