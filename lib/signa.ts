@@ -14,7 +14,7 @@ export interface TrademarkCheckResult {
 // Queries Signa (USPTO + EUIPO + WIPO Madrid) per candidate.
 // Merge logic: conflict-first — any source flagging a conflict wins.
 export async function checkTrademark(candidateName: string, niceClass: number): Promise<TrademarkCheckResult> {
-  const signa = new Signa(process.env.SIGNA_API_KEY!)
+  const signa = new Signa({ api_key: process.env.SIGNA_API_KEY })
 
   const results = await signa.trademarks.list({
     q: candidateName,
