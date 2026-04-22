@@ -5,6 +5,12 @@ export interface DomainAvailability {
   alternates: string[]
 }
 
+export interface CandidateProposal {
+  name: string
+  style: 'descriptive' | 'invented' | 'metaphorical' | 'acronym' | 'compound'
+  rationale: string
+}
+
 export interface Candidate {
   name: string
   style: 'descriptive' | 'invented' | 'metaphorical' | 'acronym' | 'compound'
