@@ -5,5 +5,5 @@
     "module": "commonjs",
     "moduleResolution": "node"
   },
-  "include": ["__tests__/**/*", "__mocks__/**/*", "lib/**/*", "app/**/*"]
+  "include": ["src/__tests__/**/*", "src/__mocks__/**/*", "src/lib/**/*", "src/app/**/*"]
 }
