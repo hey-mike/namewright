@@ -52,15 +52,12 @@ export async function POST(req: Request) {
       err instanceof Error ? err.message : String(err)
     )
     const message = err instanceof Error ? err.message : ''
-    const isCapacity = message.includes('rate limit') || message.includes('insufficient credits')
-    return NextResponse.json(
-      {
-        error: isCapacity
-          ? 'We are experiencing high demand. Please try again in a moment.'
-          : 'Report generation failed. Please try again.',
-      },
-      { status: 502 }
-    )
+    let userError = 'Report generation failed. Please try again.'
+    if (message.includes('rate limit'))
+      userError = 'We are experiencing high demand. Please try again in a moment.'
+    if (message.includes('insufficient credits'))
+      userError = 'Service temporarily unavailable. Please try again later.'
+    return NextResponse.json({ error: userError }, { status: 502 })
   }
 
   const reportId = randomUUID()
