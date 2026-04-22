@@ -128,6 +128,12 @@ const GENERATE_CANDIDATES_PROMPT = `You are a brand naming specialist. Generate 
   - "Premium / refined" → favour invented and compound
 - No two candidates should sound phonetically similar or share the same root word — spread across the full style spectrum.
 - Each name must be: pronounceable, distinctive, not too close to famous brands, not generic.
+- Exclude names that would be unregisterable as trademarks:
+  - No names whose primary meaning describes what the product does or the category it belongs to (e.g. "FastPay" for a payment app, "CloudStore" for cloud storage) — trademark offices refuse these as merely descriptive. Note: "descriptive" as a naming style means evocative or suggestive, not literal; a name that hints at a benefit is registerable, a name that states the function is not.
+  - No laudatory terms used alone (e.g. "Best", "Premium", "Superior", "Elite") — trademark offices refuse these as merely self-congratulatory
+  - No names that are, or closely resemble, the name of a real living or deceased person — these require consent and are routinely refused without it
+  - No corporate suffixes appended to the name (e.g. "Verity Inc", "Acmely LLC") — the suffix is disclaimed in trademark filings and adds no protectable value; the brand name alone is what gets registered
+- Treat the constraints field as hard requirements. Every candidate must satisfy them (e.g. "max 6 characters" eliminates any name longer than 6 characters; "no acronyms" eliminates the acronym style entirely). If a constraint is contradictory or impossible, do not attempt it — instead generate the best candidates you can and note the conflict in the rationale of affected names.
 - For each candidate write 2-3 sentences of strategic rationale explaining why it fits.
 
 # Output
@@ -181,8 +187,8 @@ const SYNTHESISE_REPORT_PROMPT = `You are a brand strategy expert. You have been
 - Copy domain status values exactly as provided — do not change "likely available" to "likely taken" or vice versa.
 - For each TLD marked as "likely taken", suggest 2-3 creative alternate domain strings (e.g. getbrandname.com, trybrandname.io). Leave "alternates" as an empty array if no TLD is taken.
 - Select the 3 candidates with the best combined trademark safety and domain availability as topPicks. If fewer than 3 candidates are clearly defensible, include only those that are and explain the constraint in "reasoning".
-- Rank the full candidates array from most to least viable.
-- Write actionable nextSteps for each topPick (e.g. "File USPTO application in Nice Class 42", "Register acmely.io immediately").
+- Rank the full candidates array from most to least viable. Viability is determined by this priority order: (1) trademark risk — low beats moderate beats uncertain beats high; (2) domain availability — more TLDs available is better; (3) strategic fit with the brand personality.
+- Write actionable nextSteps for each topPick. Scope is limited to trademark and domain actions only — e.g. "File USPTO application in Nice Class 42", "Register acmely.io immediately", "Commission a clearance search before filing". Do not include marketing, product, or business advice.
 
 # Output
 Respond with ONLY a valid JSON object. No markdown, no preamble.
