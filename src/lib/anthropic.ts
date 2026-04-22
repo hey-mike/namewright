@@ -1,5 +1,8 @@
 import Anthropic from '@anthropic-ai/sdk'
+import type { WebSearchTool20250305 } from '@anthropic-ai/sdk/resources/messages/messages'
 import type { ReportData, GenerateRequest } from './types'
+
+const client = new Anthropic()
 
 export const SYSTEM_PROMPT = `# Role
 You are a Brand Strategy Agent designed to support startup founders and solo developers in developing and validating brand identities. You combine expertise in naming strategy, trademark law fundamentals, and domain availability research.
@@ -56,9 +59,9 @@ export function parseReport(text: string): ReportData {
   return JSON.parse(stripped.slice(start, end + 1)) as ReportData
 }
 
-export async function generateReport(req: GenerateRequest): Promise<ReportData> {
-  const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
+const WEB_SEARCH_TOOL: WebSearchTool20250305 = { type: 'web_search_20250305', name: 'web_search' }
 
+export async function generateReport(req: GenerateRequest): Promise<ReportData> {
   const userMessage = `Product: ${req.description}
 
 Brand personality: ${req.personality}
@@ -67,19 +70,34 @@ Primary market: ${req.geography}
 
 Generate brand name candidates per the schema. Use web_search to research potential trademark conflicts for your strongest candidates. Return valid JSON only.`
 
-  const response = await client.messages.create({
-    model: 'claude-sonnet-4-6',
-    max_tokens: 4000,
-    system: SYSTEM_PROMPT,
-    messages: [{ role: 'user', content: userMessage }],
-    tools: [{ type: 'web_search_20250305', name: 'web_search' }] as any,
-  })
+  try {
+    const response = await client.messages.create({
+      model: 'claude-sonnet-4-6',
+      max_tokens: 4000,
+      system: SYSTEM_PROMPT,
+      messages: [{ role: 'user', content: userMessage }],
+      tools: [WEB_SEARCH_TOOL],
+    })
 
-  const text = response.content
-    .filter((b) => b.type === 'text')
-    .map((b) => (b as { type: 'text'; text: string }).text)
-    .join('\n')
-    .trim()
+    const text = response.content
+      .filter((b) => b.type === 'text')
+      .map((b) => (b as { type: 'text'; text: string }).text)
+      .join('\n')
+      .trim()
 
-  return parseReport(text)
+    if (!text) throw new Error('Model returned no text block — likely ended on a tool call')
+
+    return parseReport(text)
+  } catch (err) {
+    if (err instanceof Anthropic.RateLimitError) {
+      throw new Error('Anthropic rate limit reached. Please try again in a moment.')
+    }
+    if (err instanceof Anthropic.AuthenticationError) {
+      throw new Error('Anthropic API key is invalid.')
+    }
+    if (err instanceof Anthropic.APIError) {
+      throw new Error(`Anthropic API error ${err.status}: ${err.message}`)
+    }
+    throw err
+  }
 }
