@@ -34,10 +34,10 @@ export function FullReport({ report }: { report: ReportData }) {
           Brief
         </p>
         <p
-          className="display text-xl md:text-2xl font-medium italic leading-snug"
+          className="display text-xl md:text-2xl font-medium leading-snug"
           style={{ letterSpacing: '-0.02em', color: 'var(--color-text-1)' }}
         >
-          &ldquo;{report.summary}&rdquo;
+          {report.summary}
         </p>
       </section>
 
@@ -47,36 +47,33 @@ export function FullReport({ report }: { report: ReportData }) {
             className="mono text-[10px] tracking-widest uppercase mb-6"
             style={{ color: 'var(--color-text-4)' }}
           >
-            Top 3 recommendations
+            Top picks
           </p>
-          <div className="grid md:grid-cols-3 gap-4 stagger">
+          <div className="stagger">
             {report.topPicks.map((pick, i) => (
               <div
-                key={i}
-                className="p-5 rounded"
-                style={{
-                  background: 'var(--color-accent-lt)',
-                  border: '1px solid var(--color-border)',
-                }}
+                key={pick.name}
+                className="py-5 flex gap-6"
+                style={{ borderBottom: '1px solid var(--color-border)' }}
               >
                 <span
-                  className="mono text-[10px] font-bold mb-3 block"
+                  className="mono text-xs font-bold shrink-0 w-6 pt-0.5"
                   style={{ color: 'var(--color-accent)' }}
                 >
-                  0{i + 1}
+                  {String(i + 1).padStart(2, '0')}
                 </span>
-                <h3
-                  className="display text-2xl font-bold mb-3"
-                  style={{ letterSpacing: '-0.025em', color: 'var(--color-text-1)' }}
-                >
-                  {pick.name}
-                </h3>
-                <p className="text-xs ink-soft leading-relaxed mb-3">{pick.reasoning}</p>
-                <div className="pt-3" style={{ borderTop: '1px solid var(--color-border)' }}>
+                <div className="flex-1 min-w-0">
+                  <h3
+                    className="display text-2xl font-bold mb-2"
+                    style={{ letterSpacing: '-0.025em', color: 'var(--color-text-1)' }}
+                  >
+                    {pick.name}
+                  </h3>
+                  <p className="text-sm ink-soft leading-relaxed mb-3">{pick.reasoning}</p>
                   <p className="mono text-[10px] tracking-widest uppercase mb-1 ink-softer">
                     Next steps
                   </p>
-                  <p className="text-xs ink-soft leading-relaxed">{pick.nextSteps}</p>
+                  <p className="text-sm ink-soft leading-relaxed">{pick.nextSteps}</p>
                 </div>
               </div>
             ))}
@@ -98,20 +95,17 @@ export function FullReport({ report }: { report: ReportData }) {
           <span className="mono text-[11px] ink-softer">{report.candidates.length} total</span>
         </div>
         {report.candidates.map((c, i) => (
-          <CandidateRow key={i} c={c} index={i} defaultOpen={i < 3} />
+          <CandidateRow key={c.name} c={c} index={i} defaultOpen={i < 3} />
         ))}
       </section>
 
       {report.recommendation && (
-        <section
-          className="mb-14 p-5 rounded"
-          style={{ background: 'var(--color-accent-lt)', border: '1px solid var(--color-border)' }}
-        >
+        <section className="mb-14 pb-10" style={{ borderBottom: '1px solid var(--color-border)' }}>
           <p
             className="mono text-[10px] tracking-widest uppercase mb-3"
-            style={{ color: 'var(--color-accent)' }}
+            style={{ color: 'var(--color-text-4)' }}
           >
-            Editor&rsquo;s pick
+            Recommendation
           </p>
           <p
             className="display text-lg font-medium leading-snug"
@@ -132,14 +126,12 @@ export function FullReport({ report }: { report: ReportData }) {
         <AffiliateLinks />
       </section>
 
-      <section
-        className="mb-14 p-4 rounded text-xs ink-soft leading-relaxed"
-        style={{ background: 'oklch(0.970 0.020 80)', border: '1px solid oklch(0.900 0.040 80)' }}
-      >
-        <strong style={{ color: 'var(--color-text-2)' }}>Not legal advice.</strong> This report is
-        AI-assisted research based on web search signals as of {today}. Trademark notes are not a
-        substitute for a USPTO, EUIPO, or IP Australia registry search. Verify with a qualified IP
-        attorney before filing or committing to a name.
+      <section className="mb-14">
+        <p className="text-xs ink-softer leading-relaxed">
+          <strong style={{ color: 'var(--color-text-3)' }}>Not legal advice.</strong> AI-assisted
+          research based on web search signals as of {today}. Not a substitute for a USPTO, EUIPO,
+          or IP Australia registry search. Verify with a qualified IP attorney before filing.
+        </p>
       </section>
 
       <section className="mb-14">
@@ -178,15 +170,14 @@ export function FullReport({ report }: { report: ReportData }) {
         </ul>
       </section>
 
-      <section
-        className="mb-6 p-4 rounded text-xs ink-soft leading-relaxed"
-        style={{ background: 'oklch(0.970 0.010 250)', border: '1px solid oklch(0.900 0.020 250)' }}
-      >
-        <strong style={{ color: 'var(--color-text-2)' }}>
-          This report expires 24 hours after generation.
-        </strong>{' '}
-        Download a copy now — once expired, the link will no longer work and the report cannot be
-        recovered.
+      <section className="mb-6">
+        <p className="text-xs ink-softer leading-relaxed">
+          <strong style={{ color: 'var(--color-text-3)' }}>
+            This report expires 24 hours after generation.
+          </strong>{' '}
+          Download a copy now — once expired, the link will no longer work and the report cannot be
+          recovered.
+        </p>
       </section>
 
       <section

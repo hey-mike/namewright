@@ -29,7 +29,7 @@ export function AffiliateLinks() {
           rel="noopener noreferrer sponsored"
           className="block p-4 rounded"
           style={{
-            background: 'white',
+            background: 'var(--color-input-bg)',
             border: '1px solid var(--color-border)',
             transition: 'border-color 0.12s',
           }}

@@ -18,6 +18,14 @@ export async function signSession(reportId: string, paid: boolean): Promise<stri
 export async function verifySession(token: string): Promise<SessionPayload | null> {
   try {
     const { payload } = await jwtVerify(token, getSecret())
+    if (
+      typeof payload.reportId !== 'string' ||
+      typeof payload.paid !== 'boolean' ||
+      typeof payload.iat !== 'number' ||
+      typeof payload.exp !== 'number'
+    ) {
+      return null
+    }
     return payload as unknown as SessionPayload
   } catch {
     return null

@@ -2,10 +2,17 @@
 import { useState } from 'react'
 import type { Candidate } from '@/lib/types'
 
+const RISK_COLORS: Record<Candidate['trademarkRisk'], string> = {
+  low: 'var(--color-success)',
+  moderate: 'var(--color-warning)',
+  high: 'var(--color-error)',
+  uncertain: 'var(--color-text-4)',
+}
+
 function domainStatus(s: string) {
-  if (s === 'likely available') return { label: 'likely free', color: 'oklch(0.460 0.140 145)' }
-  if (s === 'likely taken') return { label: 'likely taken', color: 'oklch(0.480 0.170 22)' }
-  return { label: 'uncertain', color: 'oklch(0.620 0.010 265)' }
+  if (s === 'likely available') return { label: 'likely free', color: 'var(--color-success)' }
+  if (s === 'likely taken') return { label: 'likely taken', color: 'var(--color-error)' }
+  return { label: 'uncertain', color: 'var(--color-text-4)' }
 }
 
 export function CandidateRow({
@@ -19,12 +26,7 @@ export function CandidateRow({
 }) {
   const [open, setOpen] = useState(defaultOpen)
 
-  const riskColor =
-    c.trademarkRisk === 'low'
-      ? 'oklch(0.460 0.140 145)'
-      : c.trademarkRisk === 'moderate'
-        ? 'oklch(0.520 0.150 68)'
-        : 'oklch(0.480 0.170 22)'
+  const riskColor = RISK_COLORS[c.trademarkRisk]
 
   return (
     <div className="border-b rule-soft">
@@ -47,12 +49,31 @@ export function CandidateRow({
             {c.style}
           </span>
         </div>
-        <span
-          className="mono text-[10px] tracking-widest uppercase shrink-0"
-          style={{ color: riskColor }}
-        >
-          {c.trademarkRisk.toUpperCase()} RISK
-        </span>
+        <div className="flex items-center gap-3 shrink-0">
+          <span className="mono text-[10px] tracking-widest uppercase" style={{ color: riskColor }}>
+            {c.trademarkRisk.toUpperCase()} RISK
+          </span>
+          <svg
+            width="14"
+            height="14"
+            viewBox="0 0 14 14"
+            fill="none"
+            aria-hidden="true"
+            style={{
+              transform: open ? 'rotate(180deg)' : 'rotate(0deg)',
+              transition: 'transform 0.2s cubic-bezier(0.22, 1, 0.36, 1)',
+              color: 'var(--color-text-4)',
+            }}
+          >
+            <path
+              d="M2.5 5L7 9.5 11.5 5"
+              stroke="currentColor"
+              strokeWidth="1.3"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </svg>
+        </div>
       </button>
 
       {open && (
@@ -90,8 +111,8 @@ export function CandidateRow({
                   If taken, try
                 </p>
                 <ul className="space-y-1">
-                  {c.domains.alternates.map((alt, i) => (
-                    <li key={i} className="mono text-xs ink-soft">
+                  {c.domains.alternates.map((alt) => (
+                    <li key={alt} className="mono text-xs ink-soft">
                       {alt}
                     </li>
                   ))}

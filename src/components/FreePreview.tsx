@@ -6,7 +6,6 @@ interface FreePreviewProps {
   summary: string
   candidates: Candidate[]
   totalCount: number
-  reportId: string
   onUnlock: () => void
   unlocking: boolean
   unlockError?: string | null
@@ -32,10 +31,10 @@ export function FreePreview({
           Brief
         </p>
         <p
-          className="display text-xl md:text-2xl font-medium italic leading-snug"
+          className="display text-xl md:text-2xl font-medium leading-snug"
           style={{ letterSpacing: '-0.02em', color: 'var(--color-text-1)' }}
         >
-          &ldquo;{summary}&rdquo;
+          {summary}
         </p>
       </section>
 
@@ -44,10 +43,10 @@ export function FreePreview({
           className="mono text-[10px] tracking-widest uppercase mb-6"
           style={{ color: 'var(--color-text-4)' }}
         >
-          Top 3 candidates — free preview
+          Top 3 candidates
         </p>
         {candidates.map((c, i) => (
-          <CandidateRow key={i} c={c} index={i} defaultOpen={i === 0} />
+          <CandidateRow key={c.name} c={c} index={i} defaultOpen={i === 0} />
         ))}
       </section>
 

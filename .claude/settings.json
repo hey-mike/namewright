@@ -8,6 +8,11 @@
             "type": "command",
             "command": ".claude/hooks/typecheck.sh",
             "async": true
+          },
+          {
+            "type": "command",
+            "command": ".claude/hooks/eslint.sh",
+            "async": true
           }
         ]
       }
@@ -19,6 +24,15 @@
           {
             "type": "command",
             "command": ".claude/hooks/block-destructive.sh"
+          }
+        ]
+      },
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": ".claude/hooks/protect-sensitive.sh"
           }
         ]
       }

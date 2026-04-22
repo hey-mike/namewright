@@ -11,13 +11,21 @@ export interface TrademarkCheckResult {
 
 let _signa: Signa | null = null
 function getSigna(): Signa {
-  if (!_signa) _signa = new Signa({ api_key: process.env.SIGNA_API_KEY })
+  const key = process.env.SIGNA_API_KEY
+  if (!key) throw new Error('SIGNA_API_KEY is not set')
+  if (!_signa) _signa = new Signa({ api_key: key })
   return _signa
 }
 
-// Phase 2a: Parallel fan-out trademark verification
-// Queries Signa (USPTO + EUIPO + WIPO Madrid) per candidate.
-// Merge logic: conflict-first — any source flagging a conflict wins.
+export const TRADEMARK_UNAVAILABLE_NOTES =
+  'Trademark search unavailable. Manual verification recommended.'
+
+export function scoreTrademark(resultCount: number): TrademarkRisk {
+  if (resultCount === 0) return 'low'
+  if (resultCount <= 2) return 'moderate'
+  return 'high'
+}
+
 export async function checkTrademark(
   candidateName: string,
   niceClass: number
@@ -33,24 +41,22 @@ export async function checkTrademark(
       limit: 10,
     })
 
-    const conflicts =
-      results.data?.filter((tm) =>
-        tm.mark_text?.toLowerCase().includes(candidateName.toLowerCase())
-      ) ?? []
+    const count = results.data?.length ?? 0
+    const risk = scoreTrademark(count)
 
-    if (conflicts.length === 0) {
+    if (count === 0) {
       return {
         candidateName,
-        risk: 'low',
-        notes: `No conflicts found for "${candidateName}" in Nice Class ${niceClass} across USPTO and EUIPO.`,
+        risk,
+        notes: `No conflicts found for "${candidateName}" in Nice Class ${niceClass}.`,
         sources: ['Signa (USPTO + EUIPO)'],
       }
     }
 
     return {
       candidateName,
-      risk: 'high',
-      notes: `${conflicts.length} potential conflict(s) found for "${candidateName}". Manual review recommended.`,
+      risk,
+      notes: `${count} potential conflict(s) found for "${candidateName}". Manual review recommended.`,
       sources: ['Signa (USPTO + EUIPO)'],
     }
   } catch (err) {
@@ -58,7 +64,7 @@ export async function checkTrademark(
     return {
       candidateName,
       risk: 'uncertain',
-      notes: 'Trademark search unavailable. Manual verification recommended.',
+      notes: TRADEMARK_UNAVAILABLE_NOTES,
       sources: [],
     }
   }

@@ -11,6 +11,11 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'reportId is required' }, { status: 400 })
   }
 
+  const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+  if (typeof reportId !== 'string' || !UUID_RE.test(reportId)) {
+    return NextResponse.json({ error: 'Invalid reportId' }, { status: 400 })
+  }
+
   const appUrl = process.env.NEXT_PUBLIC_APP_URL
 
   let session

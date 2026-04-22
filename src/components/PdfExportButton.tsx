@@ -20,7 +20,7 @@ export function PdfExportButton() {
           strokeLinejoin="round"
         />
       </svg>
-      Download PDF
+      Print / Save as PDF
     </button>
   )
 }

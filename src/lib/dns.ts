@@ -1,9 +1,8 @@
 import { lookup } from 'dns/promises'
-import type { CandidateProposal, DomainAvailability } from './types'
+import { TLDS } from './types'
+import type { CandidateProposal, DomainAvailability, DomainStatus, Tld } from './types'
 
-async function checkDomain(
-  hostname: string
-): Promise<'likely available' | 'likely taken' | 'uncertain'> {
+async function checkDomain(hostname: string): Promise<DomainStatus> {
   try {
     await lookup(hostname)
     return 'likely taken'
@@ -19,13 +18,16 @@ export async function checkAllDomains(
 ): Promise<Map<string, DomainAvailability>> {
   const settled = await Promise.allSettled(
     candidates.map(async (c) => {
-      const slug = c.name.toLowerCase().replace(/\s+/g, '')
-      const [com, io, co] = await Promise.all([
-        checkDomain(`${slug}.com`),
-        checkDomain(`${slug}.io`),
-        checkDomain(`${slug}.co`),
-      ])
-      const availability: DomainAvailability = { com, io, co, alternates: [] }
+      const slug = c.name
+        .toLowerCase()
+        .replace(/\s+/g, '-')
+        .replace(/[^a-z0-9-]/g, '')
+      const results = await Promise.all(TLDS.map((tld) => checkDomain(`${slug}.${tld}`)))
+      const tldResults = Object.fromEntries(TLDS.map((tld, i) => [tld, results[i]])) as Record<
+        Tld,
+        DomainStatus
+      >
+      const availability: DomainAvailability = { ...tldResults, alternates: [] }
       return { name: c.name, availability }
     })
   )
@@ -36,9 +38,10 @@ export async function checkAllDomains(
         return [result.value.name, result.value.availability]
       }
       const fallback: DomainAvailability = {
-        com: 'uncertain',
-        io: 'uncertain',
-        co: 'uncertain',
+        ...(Object.fromEntries(TLDS.map((tld) => [tld, 'uncertain' as DomainStatus])) as Record<
+          Tld,
+          DomainStatus
+        >),
         alternates: [],
       }
       return [candidates[i].name, fallback]

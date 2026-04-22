@@ -2,6 +2,7 @@ import { type NextRequest, NextResponse } from 'next/server'
 import stripe from '@/lib/stripe'
 import { signSession } from '@/lib/session'
 import { validateEnv } from '@/lib/env'
+import { getReport } from '@/lib/kv'
 
 export async function GET(request: NextRequest) {
   validateEnv()
@@ -21,6 +22,11 @@ export async function GET(request: NextRequest) {
 
   if (stripeSession.payment_status !== 'paid' || stripeSession.metadata?.reportId !== reportId) {
     return NextResponse.redirect(new URL(`/preview?report_id=${reportId}`, request.url))
+  }
+
+  const report = await getReport(reportId)
+  if (!report) {
+    return NextResponse.redirect(new URL('/', request.url))
   }
 
   const token = await signSession(reportId, true)

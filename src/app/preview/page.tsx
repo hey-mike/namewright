@@ -98,7 +98,6 @@ function PreviewContent() {
       summary={summary}
       candidates={candidates}
       totalCount={totalCount}
-      reportId={reportId}
       onUnlock={handleUnlock}
       unlocking={unlocking}
       unlockError={unlockError}

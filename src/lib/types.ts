@@ -1,7 +1,8 @@
-export interface DomainAvailability {
-  com: 'likely available' | 'likely taken' | 'uncertain'
-  io: 'likely available' | 'likely taken' | 'uncertain'
-  co: 'likely available' | 'likely taken' | 'uncertain'
+export const TLDS = ['com', 'io', 'co'] as const
+export type Tld = (typeof TLDS)[number]
+export type DomainStatus = 'likely available' | 'likely taken' | 'uncertain'
+
+export interface DomainAvailability extends Record<Tld, DomainStatus> {
   alternates: string[]
 }
 
@@ -11,11 +12,8 @@ export interface CandidateProposal {
   rationale: string
 }
 
-export interface Candidate {
-  name: string
-  style: 'descriptive' | 'invented' | 'metaphorical' | 'acronym' | 'compound'
-  rationale: string
-  trademarkRisk: 'low' | 'moderate' | 'high'
+export interface Candidate extends CandidateProposal {
+  trademarkRisk: 'low' | 'moderate' | 'high' | 'uncertain'
   trademarkNotes: string
   domains: DomainAvailability
 }
@@ -36,7 +34,7 @@ export interface ReportData {
 export interface GenerateRequest {
   description: string
   personality: string
-  constraints: string
+  constraints?: string
   geography: string
 }
 
