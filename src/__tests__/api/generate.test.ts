@@ -4,6 +4,9 @@ jest.mock('@/lib/anthropic', () => ({
 jest.mock('@/lib/kv', () => ({
   saveReport: jest.fn(),
 }))
+jest.mock('@/lib/env', () => ({
+  validateEnv: jest.fn(),
+}))
 
 import { generateReport } from '@/lib/anthropic'
 import { saveReport } from '@/lib/kv'

@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server'
 import stripe from '@/lib/stripe'
-import { signSession } from '@/lib/session'
 
 export async function POST(req: Request) {
   const body = await req.text()
@@ -29,15 +28,6 @@ export async function POST(req: Request) {
       console.error('[webhook] Missing reportId in session metadata', session.id)
       return NextResponse.json({ error: 'Missing reportId' }, { status: 400 })
     }
-
-    const token = await signSession(reportId, true)
-
-    const res = NextResponse.json({ received: true })
-    res.headers.set(
-      'set-cookie',
-      `session=${token}; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=7200`
-    )
-    return res
   }
 
   return NextResponse.json({ received: true })

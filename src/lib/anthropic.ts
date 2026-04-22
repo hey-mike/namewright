@@ -15,23 +15,31 @@ function validateReportData(data: unknown): ReportData {
 
   if (typeof d.summary !== 'string' || !d.summary) throw new Error('Missing or invalid summary')
   if (typeof d.recommendation !== 'string') throw new Error('Missing recommendation')
-  if (!Array.isArray(d.candidates) || d.candidates.length === 0) throw new Error('candidates must be a non-empty array')
+  if (!Array.isArray(d.candidates) || d.candidates.length === 0)
+    throw new Error('candidates must be a non-empty array')
   if (!Array.isArray(d.topPicks)) throw new Error('topPicks must be an array')
 
   for (const [i, c] of (d.candidates as unknown[]).entries()) {
     if (!c || typeof c !== 'object') throw new Error(`candidates[${i}] is not an object`)
     const candidate = c as Record<string, unknown>
-    if (typeof candidate.name !== 'string' || !candidate.name) throw new Error(`candidates[${i}].name missing`)
-    if (!VALID_STYLES.has(candidate.style as string)) throw new Error(`candidates[${i}].style invalid: ${candidate.style}`)
-    if (!VALID_RISKS.has(candidate.trademarkRisk as string)) throw new Error(`candidates[${i}].trademarkRisk invalid: ${candidate.trademarkRisk}`)
-    if (typeof candidate.rationale !== 'string') throw new Error(`candidates[${i}].rationale missing`)
-    if (typeof candidate.trademarkNotes !== 'string') throw new Error(`candidates[${i}].trademarkNotes missing`)
+    if (typeof candidate.name !== 'string' || !candidate.name)
+      throw new Error(`candidates[${i}].name missing`)
+    if (!VALID_STYLES.has(candidate.style as string))
+      throw new Error(`candidates[${i}].style invalid: ${candidate.style}`)
+    if (!VALID_RISKS.has(candidate.trademarkRisk as string))
+      throw new Error(`candidates[${i}].trademarkRisk invalid: ${candidate.trademarkRisk}`)
+    if (typeof candidate.rationale !== 'string')
+      throw new Error(`candidates[${i}].rationale missing`)
+    if (typeof candidate.trademarkNotes !== 'string')
+      throw new Error(`candidates[${i}].trademarkNotes missing`)
     const domains = candidate.domains as Record<string, unknown>
     if (!domains || typeof domains !== 'object') throw new Error(`candidates[${i}].domains missing`)
     for (const tld of ['com', 'io', 'co'] as const) {
-      if (!VALID_DOMAIN_STATUS.has(domains[tld] as string)) throw new Error(`candidates[${i}].domains.${tld} invalid`)
+      if (!VALID_DOMAIN_STATUS.has(domains[tld] as string))
+        throw new Error(`candidates[${i}].domains.${tld} invalid`)
     }
-    if (!Array.isArray(domains.alternates)) throw new Error(`candidates[${i}].domains.alternates missing`)
+    if (!Array.isArray(domains.alternates))
+      throw new Error(`candidates[${i}].domains.alternates missing`)
   }
 
   return d as unknown as ReportData
@@ -70,9 +78,12 @@ export function parseProposals(text: string): CandidateProposal[] {
   for (const [i, c] of (parsed as unknown[]).entries()) {
     if (!c || typeof c !== 'object') throw new Error(`candidates[${i}] is not an object`)
     const candidate = c as Record<string, unknown>
-    if (typeof candidate.name !== 'string' || !candidate.name) throw new Error(`candidates[${i}].name missing`)
-    if (!VALID_STYLES.has(candidate.style as string)) throw new Error(`candidates[${i}].style invalid: ${candidate.style}`)
-    if (typeof candidate.rationale !== 'string' || !candidate.rationale) throw new Error(`candidates[${i}].rationale missing`)
+    if (typeof candidate.name !== 'string' || !candidate.name)
+      throw new Error(`candidates[${i}].name missing`)
+    if (!VALID_STYLES.has(candidate.style as string))
+      throw new Error(`candidates[${i}].style invalid: ${candidate.style}`)
+    if (typeof candidate.rationale !== 'string' || !candidate.rationale)
+      throw new Error(`candidates[${i}].rationale missing`)
   }
 
   return parsed as CandidateProposal[]
@@ -186,15 +197,18 @@ export async function synthesiseReport(
   req: GenerateRequest,
   verified: VerifiedCandidate[]
 ): Promise<ReportData> {
-  const candidateLines = verified.map((v) =>
-    `Name: ${v.name}
+  const candidateLines = verified
+    .map(
+      (v) =>
+        `Name: ${v.name}
 Style: ${v.style}
 Rationale: ${v.rationale}
 Trademark (Signa): ${v.trademark.risk} risk — ${v.trademark.notes}
 Domain .com: ${v.domains.com}
 Domain .io: ${v.domains.io}
 Domain .co: ${v.domains.co}`
-  ).join('\n\n---\n\n')
+    )
+    .join('\n\n---\n\n')
 
   const userMessage = `Product: ${req.description}
 Brand personality: ${req.personality}
@@ -249,7 +263,10 @@ export async function generateReport(req: GenerateRequest): Promise<ReportData> 
   try {
     trademarkMap = await checkAllTrademarks(proposals, 42)
   } catch (err) {
-    console.error('[generateReport] trademark verification failed, proceeding with empty data:', err)
+    console.error(
+      '[generateReport] trademark verification failed, proceeding with empty data:',
+      err
+    )
   }
   try {
     domainMap = await checkAllDomains(proposals)

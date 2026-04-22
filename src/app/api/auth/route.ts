@@ -1,8 +1,10 @@
 import { type NextRequest, NextResponse } from 'next/server'
 import stripe from '@/lib/stripe'
 import { signSession } from '@/lib/session'
+import { validateEnv } from '@/lib/env'
 
 export async function GET(request: NextRequest) {
+  validateEnv()
   const sessionId = request.nextUrl.searchParams.get('session_id')
   const reportId = request.nextUrl.searchParams.get('report_id')
 

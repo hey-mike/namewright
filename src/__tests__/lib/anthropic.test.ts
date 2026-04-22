@@ -7,9 +7,19 @@ jest.mock('@anthropic-ai/sdk', () => ({
       messages: { create: (...args: unknown[]) => mockCreate(...args) },
     })),
     {
-      RateLimitError: class RateLimitError extends Error { status = 429 },
-      AuthenticationError: class AuthenticationError extends Error { status = 401 },
-      APIError: class APIError extends Error { status: number; constructor(s: number, m: string) { super(m); this.status = s } },
+      RateLimitError: class RateLimitError extends Error {
+        status = 429
+      },
+      AuthenticationError: class AuthenticationError extends Error {
+        status = 401
+      },
+      APIError: class APIError extends Error {
+        status: number
+        constructor(s: number, m: string) {
+          super(m)
+          this.status = s
+        }
+      },
     }
   ),
 }))
@@ -131,7 +141,9 @@ describe('generateCandidates', () => {
   })
 
   it('throws when model returns no text block', async () => {
-    mockCreate.mockResolvedValue({ content: [{ type: 'tool_use', id: 'x', name: 'web_search', input: {} }] })
+    mockCreate.mockResolvedValue({
+      content: [{ type: 'tool_use', id: 'x', name: 'web_search', input: {} }],
+    })
 
     await expect(
       generateCandidates({ description: 'x', personality: 'y', constraints: '', geography: 'z' })
@@ -191,7 +203,12 @@ describe('synthesiseReport', () => {
     mockCreate.mockResolvedValue(makeTextResponse(JSON.stringify(MOCK_FULL_REPORT)))
 
     const result = await synthesiseReport(
-      { description: 'A SaaS tool', personality: 'Bold / contrarian', constraints: '', geography: 'Global' },
+      {
+        description: 'A SaaS tool',
+        personality: 'Bold / contrarian',
+        constraints: '',
+        geography: 'Global',
+      },
       VERIFIED
     )
 
@@ -204,7 +221,12 @@ describe('synthesiseReport', () => {
     mockCreate.mockResolvedValue(makeTextResponse(JSON.stringify(MOCK_FULL_REPORT)))
 
     await synthesiseReport(
-      { description: 'A SaaS tool', personality: 'Bold / contrarian', constraints: '', geography: 'Global' },
+      {
+        description: 'A SaaS tool',
+        personality: 'Bold / contrarian',
+        constraints: '',
+        geography: 'Global',
+      },
       VERIFIED
     )
 
@@ -246,13 +268,9 @@ describe('generateReport orchestrator', () => {
 
   it('calls generateCandidates then verification then synthesiseReport', async () => {
     // Step 1 returns proposals
-    mockCreate.mockResolvedValueOnce(
-      makeTextResponse(JSON.stringify(MOCK_PROPOSALS))
-    )
+    mockCreate.mockResolvedValueOnce(makeTextResponse(JSON.stringify(MOCK_PROPOSALS)))
     // Step 3 returns full report
-    mockCreate.mockResolvedValueOnce(
-      makeTextResponse(JSON.stringify(MOCK_FULL_REPORT))
-    )
+    mockCreate.mockResolvedValueOnce(makeTextResponse(JSON.stringify(MOCK_FULL_REPORT)))
 
     const result = await generateReport({
       description: 'A SaaS tool',

@@ -18,7 +18,10 @@ function getSigna(): Signa {
 // Phase 2a: Parallel fan-out trademark verification
 // Queries Signa (USPTO + EUIPO + WIPO Madrid) per candidate.
 // Merge logic: conflict-first — any source flagging a conflict wins.
-export async function checkTrademark(candidateName: string, niceClass: number): Promise<TrademarkCheckResult> {
+export async function checkTrademark(
+  candidateName: string,
+  niceClass: number
+): Promise<TrademarkCheckResult> {
   try {
     const results = await getSigna().search.query({
       query: candidateName,
@@ -30,9 +33,10 @@ export async function checkTrademark(candidateName: string, niceClass: number): 
       limit: 10,
     })
 
-    const conflicts = results.data?.filter((tm) =>
-      tm.mark_text?.toLowerCase().includes(candidateName.toLowerCase())
-    ) ?? []
+    const conflicts =
+      results.data?.filter((tm) =>
+        tm.mark_text?.toLowerCase().includes(candidateName.toLowerCase())
+      ) ?? []
 
     if (conflicts.length === 0) {
       return {
@@ -65,14 +69,20 @@ export async function checkAllTrademarks(
   candidates: { name: string }[],
   niceClass: number
 ): Promise<Map<string, TrademarkCheckResult>> {
-  const settled = await Promise.allSettled(
-    candidates.map((c) => checkTrademark(c.name, niceClass))
-  )
+  const settled = await Promise.allSettled(candidates.map((c) => checkTrademark(c.name, niceClass)))
   return new Map(
     settled.map((result, i) => {
       if (result.status === 'fulfilled') return [result.value.candidateName, result.value]
       const name = candidates[i].name
-      return [name, { candidateName: name, risk: 'uncertain' as const, notes: 'Trademark search unavailable.', sources: [] }]
+      return [
+        name,
+        {
+          candidateName: name,
+          risk: 'uncertain' as const,
+          notes: 'Trademark search unavailable.',
+          sources: [],
+        },
+      ]
     })
   )
 }

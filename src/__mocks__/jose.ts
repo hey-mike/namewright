@@ -47,32 +47,23 @@ export class SignJWT {
     const header = b64url(JSON.stringify(this._header))
     const body = b64url(JSON.stringify(payload))
     const signingInput = `${header}.${body}`
-    const sig = crypto
-      .createHmac('sha256', Buffer.from(secret))
-      .update(signingInput)
-      .digest()
+    const sig = crypto.createHmac('sha256', Buffer.from(secret)).update(signingInput).digest()
     return `${signingInput}.${b64url(sig)}`
   }
 }
 
 export async function jwtVerify(
   token: string,
-  secret: Uint8Array,
+  secret: Uint8Array
 ): Promise<{ payload: Record<string, unknown> }> {
   if (!token) throw new Error('Invalid token')
   const parts = token.split('.')
   if (parts.length !== 3) throw new Error('Invalid token format')
   const [header, body, sig] = parts
   const signingInput = `${header}.${body}`
-  const expected = crypto
-    .createHmac('sha256', Buffer.from(secret))
-    .update(signingInput)
-    .digest()
+  const expected = crypto.createHmac('sha256', Buffer.from(secret)).update(signingInput).digest()
   const actual = parseB64url(sig)
-  if (
-    expected.length !== actual.length ||
-    !crypto.timingSafeEqual(expected, actual)
-  ) {
+  if (expected.length !== actual.length || !crypto.timingSafeEqual(expected, actual)) {
     throw new Error('Signature verification failed')
   }
   const payload = JSON.parse(parseB64url(body).toString('utf8')) as Record<string, unknown>

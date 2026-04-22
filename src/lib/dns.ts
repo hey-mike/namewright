@@ -1,7 +1,9 @@
 import { lookup } from 'dns/promises'
 import type { CandidateProposal, DomainAvailability } from './types'
 
-async function checkDomain(hostname: string): Promise<'likely available' | 'likely taken' | 'uncertain'> {
+async function checkDomain(
+  hostname: string
+): Promise<'likely available' | 'likely taken' | 'uncertain'> {
   try {
     await lookup(hostname)
     return 'likely taken'
@@ -33,7 +35,12 @@ export async function checkAllDomains(
       if (result.status === 'fulfilled') {
         return [result.value.name, result.value.availability]
       }
-      const fallback: DomainAvailability = { com: 'uncertain', io: 'uncertain', co: 'uncertain', alternates: [] }
+      const fallback: DomainAvailability = {
+        com: 'uncertain',
+        io: 'uncertain',
+        co: 'uncertain',
+        alternates: [],
+      }
       return [candidates[i].name, fallback]
     })
   )
