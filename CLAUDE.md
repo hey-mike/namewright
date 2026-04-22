@@ -28,12 +28,18 @@ src/
   proxy.ts      — Next.js 16 rate limiting (file: proxy.ts, export: proxy)
 ```
 
+## Context7 — Mandatory for Library APIs
+Before writing any code that uses a library or framework API, you MUST query Context7 first:
+1. `mcp__plugin_context7-plugin_context7__resolve-library-id` — resolve the library name
+2. `mcp__plugin_context7-plugin_context7__query-docs` — fetch current docs for the specific API
+
+This applies to: Next.js, Anthropic SDK, Stripe, jose, @vercel/kv, Tailwind CSS, Signa SDK, React — any third-party package. Never rely on training data for API shapes, method signatures, or constructor options. Libraries in this project have breaking changes from prior versions.
+
 ## Key Conventions
 - Server Components by default; `'use client'` only where event handlers needed
 - `@/*` path alias resolves to `src/*`
 - No `as any` — use proper SDK-exported types
 - No workarounds — fix root causes
-- Context7 for any library API questions before writing code
 
 ## Auth Flow
 Stripe payment → `/api/auth` GET → sets HttpOnly cookie → redirect to `/results`
