@@ -24,7 +24,7 @@ describe('POST /api/checkout', () => {
     const req = new Request('http://localhost/api/checkout', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ reportId: 'report-123' }),
+      body: JSON.stringify({ reportId: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890' }),
     })
 
     const res = await POST(req)
@@ -35,7 +35,7 @@ describe('POST /api/checkout', () => {
     expect((stripe as jest.Mock)().checkout.sessions.create).toHaveBeenCalledWith(
       expect.objectContaining({
         mode: 'payment',
-        metadata: { reportId: 'report-123' },
+        metadata: { reportId: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890' },
       })
     )
   })
@@ -69,7 +69,7 @@ describe('POST /api/checkout', () => {
     const req = new Request('http://localhost/api/checkout', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ reportId: 'report-123' }),
+      body: JSON.stringify({ reportId: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890' }),
     })
     const res = await POST(req)
     expect(res.status).toBe(502)

@@ -8,10 +8,14 @@ jest.mock('@/lib/session', () => ({
 jest.mock('@/lib/env', () => ({
   validateEnv: jest.fn(),
 }))
+jest.mock('@/lib/kv', () => ({
+  getReport: jest.fn(),
+}))
 
 import { NextRequest } from 'next/server'
 import stripe from '@/lib/stripe'
 import { signSession } from '@/lib/session'
+import { getReport } from '@/lib/kv'
 import { GET } from '@/app/api/auth/route'
 
 const BASE_URL = 'http://localhost:3000'
@@ -39,6 +43,12 @@ function mockStripeSession(overrides: object = {}) {
 describe('GET /api/auth', () => {
   beforeEach(() => {
     ;(signSession as jest.Mock).mockResolvedValue('signed-token')
+    ;(getReport as jest.Mock).mockResolvedValue({
+      summary: 'mock',
+      candidates: [],
+      topPicks: [],
+      recommendation: '',
+    })
   })
 
   it('sets HttpOnly session cookie and redirects to /results on valid paid session', async () => {

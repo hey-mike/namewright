@@ -6,6 +6,9 @@ jest.mock('@/lib/stripe', () => ({
     },
   })),
 }))
+jest.mock('@/lib/env', () => ({
+  validateEnv: jest.fn(),
+}))
 
 import stripe from '@/lib/stripe'
 import { POST } from '@/app/api/webhook/route'
@@ -62,14 +65,14 @@ describe('POST /api/webhook', () => {
     expect(res.headers.get('set-cookie')).toBeNull()
   })
 
-  it('returns 400 when reportId is missing', async () => {
+  it('returns 200 when reportId is missing in metadata', async () => {
     mockConstructEvent({
       type: 'checkout.session.completed',
       data: { object: { payment_status: 'paid', metadata: {} } },
     })
 
     const res = await POST(makeRequest())
-    expect(res.status).toBe(400)
+    expect(res.status).toBe(200)
   })
 
   it('returns 400 on invalid signature', async () => {

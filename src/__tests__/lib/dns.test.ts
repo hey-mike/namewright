@@ -58,6 +58,6 @@ describe('checkAllDomains', () => {
     mockLookup.mockResolvedValue({ address: '1.2.3.4', family: 4 })
 
     await checkAllDomains(spaced)
-    expect(mockLookup).toHaveBeenCalledWith('mybrand.com')
+    expect(mockLookup).toHaveBeenCalledWith('my-brand.com')
   })
 })

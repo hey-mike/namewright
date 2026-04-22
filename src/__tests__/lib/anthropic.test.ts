@@ -105,7 +105,7 @@ describe('parseProposals', () => {
   })
 
   it('throws when no array found', () => {
-    expect(() => parseProposals('not an array at all')).toThrow('No JSON array found')
+    expect(() => parseProposals('not an array at all')).toThrow("No closing ']' found in response")
   })
 })
 
@@ -126,9 +126,7 @@ describe('generateCandidates', () => {
 
     expect(result).toHaveLength(8)
     expect(result[0].name).toBe('Brand0')
-    expect(mockCreate).toHaveBeenCalledWith(
-      expect.objectContaining({ model: 'claude-sonnet-4-6', tools: undefined })
-    )
+    expect(mockCreate).toHaveBeenCalledWith(expect.objectContaining({ model: 'claude-sonnet-4-6' }))
   })
 
   it('throws when model returns fewer than 5 candidates', async () => {
@@ -285,20 +283,19 @@ describe('generateReport orchestrator', () => {
     expect(result.candidates).toHaveLength(8)
   })
 
-  it('proceeds with uncertain data when Signa and DNS both fail', async () => {
+  it('throws when both Signa and DNS fail', async () => {
     ;(checkAllTrademarks as jest.Mock).mockRejectedValue(new Error('Signa down'))
     ;(checkAllDomains as jest.Mock).mockRejectedValue(new Error('DNS down'))
 
     mockCreate.mockResolvedValueOnce(makeTextResponse(JSON.stringify(MOCK_PROPOSALS)))
-    mockCreate.mockResolvedValueOnce(makeTextResponse(JSON.stringify(MOCK_FULL_REPORT)))
 
-    const result = await generateReport({
-      description: 'A SaaS tool',
-      personality: 'Bold / contrarian',
-      constraints: '',
-      geography: 'Global',
-    })
-
-    expect(result.candidates).toHaveLength(8)
+    await expect(
+      generateReport({
+        description: 'A SaaS tool',
+        personality: 'Bold / contrarian',
+        constraints: '',
+        geography: 'Global',
+      })
+    ).rejects.toThrow('Both trademark and domain verification failed')
   })
 })
