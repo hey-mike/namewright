@@ -1,0 +1,779 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>UI Redesign Concepts</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,300;12..96,400;12..96,500;12..96,600;12..96,700&family=Geist:wght@300;400;500;600&display=swap');
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: oklch(0.985 0.004 250);
+    --surface: oklch(0.975 0.005 250);
+    --surface-raised: oklch(1 0.002 250);
+    --border: oklch(0.88 0.008 250);
+    --border-strong: oklch(0.75 0.012 250);
+    --text: oklch(0.15 0.01 265);
+    --text-secondary: oklch(0.42 0.015 265);
+    --text-tertiary: oklch(0.62 0.01 265);
+    --accent: oklch(0.42 0.18 265);
+    --accent-light: oklch(0.94 0.04 265);
+    --accent-text: oklch(0.98 0.005 265);
+    --success: oklch(0.45 0.14 145);
+    --warning: oklch(0.52 0.16 55);
+    --danger: oklch(0.48 0.17 22);
+    --font-display: 'Bricolage Grotesque', system-ui, sans-serif;
+    --font-body: 'Geist', system-ui, sans-serif;
+  }
+
+  body {
+    font-family: var(--font-body);
+    background: oklch(0.93 0.006 250);
+    color: var(--text);
+    padding: 32px 16px;
+    min-height: 100vh;
+  }
+
+  .label {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text-tertiary);
+    margin-bottom: 16px;
+  }
+
+  .screens {
+    display: grid;
+    gap: 32px;
+    max-width: 1200px;
+    margin: 0 auto;
+  }
+
+  .screen-wrap {
+    background: var(--bg);
+    border-radius: 12px;
+    overflow: hidden;
+    box-shadow: 0 1px 3px oklch(0 0 0 / 0.08), 0 8px 32px oklch(0 0 0 / 0.06);
+  }
+
+  .screen-label {
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    padding: 10px 20px;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--text-tertiary);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .screen-label .dot {
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: var(--accent);
+  }
+
+  /* ─── HEADER ─── */
+  .header {
+    border-bottom: 1px solid var(--border);
+    padding: 0 40px;
+    height: 52px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .wordmark {
+    font-family: var(--font-display);
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--text);
+    letter-spacing: -0.01em;
+  }
+
+  .header-meta {
+    font-size: 11px;
+    color: var(--text-tertiary);
+    font-weight: 500;
+  }
+
+  /* ─── INTAKE SCREEN ─── */
+  .intake-body {
+    padding: 48px 40px 56px;
+    max-width: 680px;
+  }
+
+  .intake-eyebrow {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin-bottom: 12px;
+  }
+
+  .intake-title {
+    font-family: var(--font-display);
+    font-size: 32px;
+    font-weight: 600;
+    line-height: 1.15;
+    letter-spacing: -0.025em;
+    color: var(--text);
+    margin-bottom: 8px;
+  }
+
+  .intake-subtitle {
+    font-size: 14px;
+    color: var(--text-secondary);
+    line-height: 1.6;
+    margin-bottom: 40px;
+  }
+
+  .field-group {
+    margin-bottom: 28px;
+  }
+
+  .field-label {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    margin-bottom: 8px;
+  }
+
+  .field-num {
+    font-size: 10px;
+    font-weight: 700;
+    color: var(--accent);
+    letter-spacing: 0.04em;
+    font-variant-numeric: tabular-nums;
+    min-width: 16px;
+  }
+
+  .field-name {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text);
+  }
+
+  .field-hint {
+    font-size: 12px;
+    color: var(--text-tertiary);
+  }
+
+  textarea, input[type="text"] {
+    width: 100%;
+    background: var(--surface-raised);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px 14px;
+    font-family: var(--font-body);
+    font-size: 14px;
+    color: var(--text);
+    resize: none;
+    outline: none;
+    transition: border-color 0.15s;
+    line-height: 1.5;
+  }
+
+  textarea:focus, input[type="text"]:focus {
+    border-color: var(--accent);
+  }
+
+  .chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  .chip {
+    padding: 6px 12px;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--text-secondary);
+    cursor: pointer;
+    background: var(--surface-raised);
+    transition: all 0.12s;
+  }
+
+  .chip.active {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: var(--accent-text);
+    font-weight: 600;
+  }
+
+  .chip-personality.active { background: oklch(0.38 0.18 265); border-color: oklch(0.38 0.18 265); }
+
+  .submit-row {
+    margin-top: 36px;
+    padding-top: 28px;
+    border-top: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 16px;
+  }
+
+  .btn-primary {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 20px;
+    background: var(--accent);
+    color: var(--accent-text);
+    border: none;
+    border-radius: 8px;
+    font-family: var(--font-body);
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    letter-spacing: -0.01em;
+  }
+
+  .btn-hint {
+    font-size: 12px;
+    color: var(--text-tertiary);
+  }
+
+  /* ─── LOADING SCREEN ─── */
+  .loading-body {
+    padding: 48px 40px;
+    max-width: 680px;
+  }
+
+  .loading-title {
+    font-family: var(--font-display);
+    font-size: 24px;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    margin-bottom: 32px;
+  }
+
+  .research-steps {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+  }
+
+  .step {
+    display: flex;
+    align-items: flex-start;
+    gap: 16px;
+    padding: 14px 0;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .step:last-child { border-bottom: none; }
+
+  .step-icon {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 11px;
+    font-weight: 700;
+    flex-shrink: 0;
+    margin-top: 1px;
+  }
+
+  .step-icon.done { background: oklch(0.92 0.06 145); color: var(--success); }
+  .step-icon.active { background: var(--accent-light); color: var(--accent); }
+  .step-icon.pending { background: var(--surface); color: var(--text-tertiary); border: 1px solid var(--border); }
+
+  .step-content { flex: 1; }
+
+  .step-name {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text);
+    margin-bottom: 2px;
+  }
+
+  .step-detail {
+    font-size: 12px;
+    color: var(--text-secondary);
+  }
+
+  .step-detail.active { color: var(--accent); }
+
+  .pulse {
+    display: inline-block;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--accent);
+    animation: pulse 1.2s ease-in-out infinite;
+    margin-right: 6px;
+    vertical-align: middle;
+  }
+
+  @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+
+  /* ─── RESULTS SCREEN ─── */
+  .results-layout {
+    display: grid;
+    grid-template-columns: 1fr 260px;
+    min-height: 480px;
+  }
+
+  .results-main {
+    border-right: 1px solid var(--border);
+    padding: 32px 36px;
+    overflow: hidden;
+  }
+
+  .results-sidebar {
+    padding: 24px 20px;
+    background: var(--surface);
+  }
+
+  .section-label {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--text-tertiary);
+    margin-bottom: 16px;
+  }
+
+  .top-picks {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-bottom: 28px;
+  }
+
+  .pick-card {
+    padding: 14px 16px;
+    background: var(--surface-raised);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+  }
+
+  .pick-card.top {
+    background: var(--accent-light);
+    border-color: oklch(0.78 0.08 265);
+  }
+
+  .pick-rank {
+    font-size: 10px;
+    font-weight: 700;
+    color: var(--text-tertiary);
+    letter-spacing: 0.06em;
+    margin-bottom: 4px;
+  }
+
+  .pick-rank.top { color: var(--accent); }
+
+  .pick-name {
+    font-family: var(--font-display);
+    font-size: 20px;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    color: var(--text);
+    margin-bottom: 4px;
+  }
+
+  .pick-reason {
+    font-size: 11px;
+    color: var(--text-secondary);
+    line-height: 1.5;
+  }
+
+  /* Candidate table */
+  .candidate-table {
+    width: 100%;
+    border-collapse: collapse;
+  }
+
+  .candidate-table th {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text-tertiary);
+    text-align: left;
+    padding: 0 12px 10px 0;
+    border-bottom: 1px solid var(--border-strong);
+  }
+
+  .candidate-table td {
+    padding: 12px 12px 12px 0;
+    border-bottom: 1px solid var(--border);
+    font-size: 13px;
+    vertical-align: top;
+  }
+
+  .candidate-table tr:last-child td { border-bottom: none; }
+
+  .candidate-name {
+    font-family: var(--font-display);
+    font-weight: 600;
+    font-size: 15px;
+    letter-spacing: -0.01em;
+    color: var(--text);
+    white-space: nowrap;
+  }
+
+  .risk-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    white-space: nowrap;
+  }
+
+  .risk-low { background: oklch(0.92 0.06 145); color: var(--success); }
+  .risk-moderate { background: oklch(0.93 0.08 65); color: var(--warning); }
+  .risk-high { background: oklch(0.93 0.06 22); color: var(--danger); }
+
+  .domain-cell {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+  }
+
+  .domain-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11px;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .domain-tld {
+    color: var(--text-tertiary);
+    width: 24px;
+  }
+
+  .domain-status {
+    font-weight: 500;
+  }
+
+  .domain-status.free { color: var(--success); }
+  .domain-status.taken { color: var(--danger); }
+  .domain-status.uncertain { color: var(--text-tertiary); }
+
+  /* Sidebar */
+  .sidebar-summary {
+    font-size: 12px;
+    color: var(--text-secondary);
+    line-height: 1.6;
+    padding: 14px;
+    background: var(--surface-raised);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    margin-bottom: 20px;
+    font-style: italic;
+  }
+
+  .sidebar-stat {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    padding: 8px 0;
+    border-bottom: 1px solid var(--border);
+    font-size: 12px;
+  }
+
+  .sidebar-stat:last-child { border-bottom: none; }
+  .stat-label { color: var(--text-tertiary); }
+  .stat-value { font-weight: 600; font-variant-numeric: tabular-nums; }
+
+  .unlock-box {
+    margin-top: 20px;
+    padding: 16px;
+    background: var(--accent-light);
+    border-radius: 8px;
+    border: 1px solid oklch(0.82 0.08 265);
+  }
+
+  .unlock-title {
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--accent);
+    margin-bottom: 4px;
+  }
+
+  .unlock-text {
+    font-size: 11px;
+    color: var(--text-secondary);
+    margin-bottom: 12px;
+    line-height: 1.5;
+  }
+
+  .unlock-btn {
+    display: block;
+    width: 100%;
+    text-align: center;
+    padding: 9px;
+    background: var(--accent);
+    color: var(--accent-text);
+    border: none;
+    border-radius: 6px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+
+  .unlock-note {
+    font-size: 10px;
+    text-align: center;
+    color: var(--text-tertiary);
+    margin-top: 6px;
+  }
+</style>
+</head>
+<body>
+
+<div style="max-width:1200px;margin:0 auto">
+  <div style="margin-bottom:24px">
+    <div class="label">UI Redesign Concepts — Perplexity-style research interface</div>
+    <p style="font-size:13px;color:oklch(0.42 0.015 265)">Three key screens: Intake brief → Research in progress → Results report</p>
+  </div>
+
+  <div class="screens">
+
+    <!-- SCREEN 1: INTAKE -->
+    <div class="screen-wrap">
+      <div class="screen-label"><span class="dot"></span>Screen 1 — Submit a research brief</div>
+      <div class="header">
+        <span class="wordmark">Namewright</span>
+        <span class="header-meta">Brand Name Research</span>
+      </div>
+      <div class="intake-body">
+        <div class="intake-eyebrow">New research brief</div>
+        <h1 class="intake-title">What are you building?</h1>
+        <p class="intake-subtitle">We'll generate 8–12 ranked brand name candidates with trademark risk assessment and domain availability across USPTO, EUIPO, and WIPO registries.</p>
+
+        <div class="field-group">
+          <div class="field-label">
+            <span class="field-num">01</span>
+            <span class="field-name">Describe your product</span>
+            <span class="field-hint">— category, function, who it's for</span>
+          </div>
+          <textarea rows="3" placeholder="e.g. A mobile app that helps solo runners find training partners at their pace within 5km."></textarea>
+        </div>
+
+        <div class="field-group">
+          <div class="field-label">
+            <span class="field-num">02</span>
+            <span class="field-name">Brand personality</span>
+          </div>
+          <div class="chips">
+            <button class="chip active chip-personality">Serious / technical</button>
+            <button class="chip chip-personality">Playful / approachable</button>
+            <button class="chip chip-personality">Premium / refined</button>
+            <button class="chip chip-personality">Utilitarian / direct</button>
+            <button class="chip chip-personality">Bold / contrarian</button>
+          </div>
+        </div>
+
+        <div class="field-group">
+          <div class="field-label">
+            <span class="field-num">03</span>
+            <span class="field-name">Primary market</span>
+          </div>
+          <div class="chips">
+            <button class="chip active chip-personality">US-first</button>
+            <button class="chip chip-personality">Global</button>
+            <button class="chip chip-personality">Australia / APAC</button>
+            <button class="chip chip-personality">Europe</button>
+            <button class="chip chip-personality">China / Asia</button>
+          </div>
+        </div>
+
+        <div class="field-group">
+          <div class="field-label">
+            <span class="field-num">04</span>
+            <span class="field-name">Any constraints?</span>
+            <span class="field-hint">— optional</span>
+          </div>
+          <input type="text" placeholder="e.g. Under 8 characters. Must be pronounceable in Mandarin.">
+        </div>
+
+        <div class="submit-row">
+          <button class="btn-primary">Run research →</button>
+          <span class="btn-hint">~30 seconds · USPTO + EUIPO + WIPO</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- SCREEN 2: LOADING -->
+    <div class="screen-wrap">
+      <div class="screen-label"><span class="dot"></span>Screen 2 — Research in progress</div>
+      <div class="header">
+        <span class="wordmark">Namewright</span>
+        <span class="header-meta">Research in progress…</span>
+      </div>
+      <div class="loading-body">
+        <h2 class="loading-title">Researching name candidates<br>for your product.</h2>
+
+        <div class="research-steps">
+          <div class="step">
+            <div class="step-icon done">✓</div>
+            <div class="step-content">
+              <div class="step-name">Generating name candidates</div>
+              <div class="step-detail">12 candidates across descriptive, invented, metaphorical, compound styles</div>
+            </div>
+          </div>
+          <div class="step">
+            <div class="step-icon done">✓</div>
+            <div class="step-content">
+              <div class="step-name">Web conflict screening</div>
+              <div class="step-detail">Checking for established brands and recent coverage</div>
+            </div>
+          </div>
+          <div class="step">
+            <div class="step-icon active">↻</div>
+            <div class="step-content">
+              <div class="step-name">Trademark registry search</div>
+              <div class="step-detail active"><span class="pulse"></span>Querying USPTO · EUIPO · WIPO Madrid in parallel</div>
+            </div>
+          </div>
+          <div class="step">
+            <div class="step-icon pending">4</div>
+            <div class="step-content">
+              <div class="step-name">Domain availability</div>
+              <div class="step-detail">.com · .io · .co for each candidate</div>
+            </div>
+          </div>
+          <div class="step">
+            <div class="step-icon pending">5</div>
+            <div class="step-content">
+              <div class="step-name">Ranking and recommendations</div>
+              <div class="step-detail">Scoring by trademark risk, domain availability, and strategic fit</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- SCREEN 3: RESULTS (FREE PREVIEW) -->
+    <div class="screen-wrap">
+      <div class="screen-label"><span class="dot"></span>Screen 3 — Research report (free preview)</div>
+      <div class="header">
+        <span class="wordmark">Namewright</span>
+        <span class="header-meta">12 candidates · USPTO + EUIPO + WIPO verified</span>
+      </div>
+      <div class="results-layout">
+        <div class="results-main">
+          <div class="section-label">All candidates — ranked by viability</div>
+          <table class="candidate-table">
+            <thead>
+              <tr>
+                <th style="width:32px">#</th>
+                <th>Name</th>
+                <th>Style</th>
+                <th>TM Risk</th>
+                <th>Domains</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td style="color:oklch(0.62 0.01 265);font-size:11px;font-weight:600">01</td>
+                <td><span class="candidate-name">Latchkey</span></td>
+                <td style="font-size:12px;color:oklch(0.62 0.01 265)">Metaphorical</td>
+                <td><span class="risk-badge risk-low">Low</span></td>
+                <td>
+                  <div class="domain-cell">
+                    <div class="domain-row"><span class="domain-tld">.com</span><span class="domain-status free">Likely free</span></div>
+                    <div class="domain-row"><span class="domain-tld">.io</span><span class="domain-status free">Likely free</span></div>
+                  </div>
+                </td>
+              </tr>
+              <tr>
+                <td style="color:oklch(0.62 0.01 265);font-size:11px;font-weight:600">02</td>
+                <td><span class="candidate-name">Pariva</span></td>
+                <td style="font-size:12px;color:oklch(0.62 0.01 265)">Invented</td>
+                <td><span class="risk-badge risk-low">Low</span></td>
+                <td>
+                  <div class="domain-cell">
+                    <div class="domain-row"><span class="domain-tld">.com</span><span class="domain-status uncertain">Uncertain</span></div>
+                    <div class="domain-row"><span class="domain-tld">.io</span><span class="domain-status free">Likely free</span></div>
+                  </div>
+                </td>
+              </tr>
+              <tr>
+                <td style="color:oklch(0.62 0.01 265);font-size:11px;font-weight:600">03</td>
+                <td><span class="candidate-name">Runmate</span></td>
+                <td style="font-size:12px;color:oklch(0.62 0.01 265)">Compound</td>
+                <td><span class="risk-badge risk-moderate">Moderate</span></td>
+                <td>
+                  <div class="domain-cell">
+                    <div class="domain-row"><span class="domain-tld">.com</span><span class="domain-status taken">Likely taken</span></div>
+                    <div class="domain-row"><span class="domain-tld">.io</span><span class="domain-status uncertain">Uncertain</span></div>
+                  </div>
+                </td>
+              </tr>
+              <!-- Locked rows -->
+              <tr style="opacity:0.25;filter:blur(3px);pointer-events:none">
+                <td style="color:oklch(0.62 0.01 265);font-size:11px;font-weight:600">04</td>
+                <td><span class="candidate-name">Veldra</span></td>
+                <td style="font-size:12px;color:oklch(0.62 0.01 265)">Invented</td>
+                <td><span class="risk-badge risk-low">Low</span></td>
+                <td><div class="domain-cell"><div class="domain-row"><span class="domain-tld">.com</span><span class="domain-status free">Likely free</span></div></div></td>
+              </tr>
+              <tr style="opacity:0.15;filter:blur(4px);pointer-events:none">
+                <td style="color:oklch(0.62 0.01 265);font-size:11px;font-weight:600">05</td>
+                <td><span class="candidate-name">Stridex</span></td>
+                <td style="font-size:12px;color:oklch(0.62 0.01 265)">Compound</td>
+                <td><span class="risk-badge risk-high">High</span></td>
+                <td><div class="domain-cell"><div class="domain-row"><span class="domain-tld">.com</span><span class="domain-status taken">Likely taken</span></div></div></td>
+              </tr>
+            </tbody>
+          </table>
+          <div style="margin-top:8px;font-size:11px;color:oklch(0.62 0.01 265)">+ 7 more candidates — unlock to view full report</div>
+        </div>
+
+        <div class="results-sidebar">
+          <div class="section-label">Brief summary</div>
+          <div class="sidebar-summary">"A mobile app connecting solo runners with training partners nearby."</div>
+
+          <div class="section-label">Report stats</div>
+          <div class="sidebar-stat">
+            <span class="stat-label">Candidates</span>
+            <span class="stat-value">12</span>
+          </div>
+          <div class="sidebar-stat">
+            <span class="stat-label">Low risk</span>
+            <span class="stat-value" style="color:var(--success)">7</span>
+          </div>
+          <div class="sidebar-stat">
+            <span class="stat-label">Registries</span>
+            <span class="stat-value">USPTO · EUIPO · WIPO</span>
+          </div>
+          <div class="sidebar-stat">
+            <span class="stat-label">Verified</span>
+            <span class="stat-value">Apr 22, 2026</span>
+          </div>
+
+          <div class="unlock-box">
+            <div class="unlock-title">Full report</div>
+            <div class="unlock-text">Top 3 picks with next steps, all 12 candidates, detailed trademark notes, and PDF export.</div>
+            <button class="unlock-btn">Unlock — $19</button>
+            <div class="unlock-note">One-time · No subscription</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+</body>
+</html>

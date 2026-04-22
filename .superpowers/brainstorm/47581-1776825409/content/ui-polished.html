@@ -1,0 +1,1381 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Namewright — Polished UI</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,500;12..96,600;12..96,700&family=Geist:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  /* Surface */
+  --bg:              oklch(0.983 0.004 228);
+  --surface:         oklch(0.970 0.006 228);
+  --surface-raised:  oklch(1.000 0.002 228);
+  --surface-sunken:  oklch(0.960 0.007 228);
+
+  /* Borders */
+  --border:          oklch(0.900 0.008 228);
+  --border-mid:      oklch(0.820 0.013 228);
+  --border-strong:   oklch(0.720 0.018 228);
+
+  /* Text */
+  --text-primary:    oklch(0.140 0.012 265);
+  --text-body:       oklch(0.260 0.012 265);
+  --text-secondary:  oklch(0.440 0.014 265);
+  --text-tertiary:   oklch(0.620 0.010 265);
+  --text-placeholder:oklch(0.720 0.008 265);
+
+  /* Accent — deep slate blue (research-grade, distinctly not AI purple) */
+  --accent:          oklch(0.340 0.180 215);
+  --accent-hover:    oklch(0.285 0.195 215);
+  --accent-active:   oklch(0.245 0.175 215);
+  --accent-light:    oklch(0.952 0.025 215);
+  --accent-mid:      oklch(0.770 0.075 215);
+  --accent-text:     oklch(0.990 0.004 215);
+
+  /* Semantic */
+  --success:         oklch(0.460 0.140 145);
+  --success-bg:      oklch(0.945 0.042 145);
+  --success-border:  oklch(0.820 0.085 145);
+  --warning:         oklch(0.520 0.150 68);
+  --warning-bg:      oklch(0.950 0.042 68);
+  --warning-border:  oklch(0.820 0.095 68);
+  --danger:          oklch(0.480 0.170 22);
+  --danger-bg:       oklch(0.950 0.038 22);
+  --danger-border:   oklch(0.820 0.090 22);
+
+  /* Type */
+  --font-display: 'Bricolage Grotesque', system-ui, sans-serif;
+  --font-body:    'Geist', system-ui, sans-serif;
+
+  /* Space (4pt scale) */
+  --sp-1: 4px;  --sp-2: 8px;  --sp-3: 12px; --sp-4: 16px;
+  --sp-5: 20px; --sp-6: 24px; --sp-8: 32px; --sp-10: 40px;
+  --sp-12: 48px; --sp-14: 56px; --sp-16: 64px;
+
+  /* Radius */
+  --r-sm: 6px; --r-md: 8px; --r-lg: 12px;
+
+  /* Motion */
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --dur-fast: 120ms; --dur-mid: 200ms; --dur-slow: 320ms;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+}
+
+body {
+  font-family: var(--font-body);
+  background: oklch(0.920 0.008 228);
+  color: var(--text-body);
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ── DEMO SHELL ── */
+.demo-shell {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: var(--sp-8) var(--sp-4);
+}
+
+.demo-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--sp-6);
+}
+
+.demo-title {
+  font-family: var(--font-display);
+  font-size: 13px;
+  font-weight: 600;
+  color: oklch(0.440 0.014 265);
+  letter-spacing: -0.01em;
+}
+
+/* ── SCREEN TABS ── */
+.screen-tabs {
+  display: flex;
+  gap: var(--sp-2);
+  background: oklch(0.900 0.010 252);
+  padding: 3px;
+  border-radius: var(--r-md);
+}
+
+.tab-btn {
+  padding: 6px 14px;
+  border: none;
+  border-radius: calc(var(--r-md) - 2px);
+  font-family: var(--font-body);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  color: var(--text-secondary);
+  background: transparent;
+  transition: background var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out);
+}
+
+.tab-btn.active {
+  background: var(--surface-raised);
+  color: var(--text-primary);
+  font-weight: 600;
+  box-shadow: 0 1px 2px oklch(0 0 0 / 0.06);
+}
+
+/* ── APP FRAME ── */
+.app-frame {
+  background: var(--bg);
+  border-radius: var(--r-lg);
+  overflow: hidden;
+  box-shadow:
+    0 0 0 1px oklch(0 0 0 / 0.07),
+    0 4px 8px oklch(0 0 0 / 0.05),
+    0 16px 48px oklch(0 0 0 / 0.08);
+}
+
+.screen { display: none; }
+.screen.active { display: block; }
+
+/* ── APP HEADER ── */
+.app-header {
+  height: 48px;
+  padding: 0 var(--sp-8);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface-raised);
+}
+
+.wordmark {
+  font-family: var(--font-display);
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-primary);
+  letter-spacing: -0.02em;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
+.wordmark-dot {
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+  display: inline-block;
+}
+
+.header-tag {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-tertiary);
+  letter-spacing: 0.01em;
+}
+
+/* ────────────────────────
+   SCREEN 1 — INTAKE
+──────────────────────── */
+.intake-body {
+  padding: var(--sp-10) var(--sp-8) var(--sp-12);
+  max-width: 660px;
+}
+
+.screen-eyebrow {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.10em;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin-bottom: var(--sp-3);
+}
+
+.screen-title {
+  font-family: var(--font-display);
+  font-size: 30px;
+  font-weight: 700;
+  line-height: 1.12;
+  letter-spacing: -0.030em;
+  color: var(--text-primary);
+  margin-bottom: var(--sp-2);
+  font-feature-settings: "ss01";
+}
+
+.screen-subtitle {
+  font-size: 14px;
+  color: var(--text-secondary);
+  line-height: 1.65;
+  max-width: 56ch;
+  margin-bottom: var(--sp-10);
+}
+
+/* Field */
+.field {
+  margin-bottom: var(--sp-6);
+}
+
+.field-header {
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-2);
+  margin-bottom: var(--sp-2);
+}
+
+.field-index {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--accent);
+  letter-spacing: 0.05em;
+  font-variant-numeric: tabular-nums;
+  min-width: 18px;
+}
+
+.field-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+  letter-spacing: -0.01em;
+}
+
+.field-optional {
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--text-tertiary);
+  margin-left: var(--sp-1);
+}
+
+.field-hint {
+  font-size: 12px;
+  color: var(--text-tertiary);
+  line-height: 1.5;
+  margin-top: var(--sp-1);
+}
+
+textarea, input[type="text"] {
+  width: 100%;
+  font-family: var(--font-body);
+  font-size: 14px;
+  color: var(--text-body);
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  padding: var(--sp-3) var(--sp-4);
+  outline: none;
+  resize: none;
+  transition:
+    border-color var(--dur-fast) var(--ease-out),
+    box-shadow var(--dur-fast) var(--ease-out);
+  line-height: 1.6;
+}
+
+textarea::placeholder, input::placeholder {
+  color: var(--text-placeholder);
+}
+
+textarea:hover, input[type="text"]:hover {
+  border-color: var(--border-mid);
+}
+
+textarea:focus, input[type="text"]:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px oklch(0.340 0.180 215 / 0.10);
+}
+
+/* Chips */
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+}
+
+.chip {
+  padding: 6px 13px;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--border);
+  font-family: var(--font-body);
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  cursor: pointer;
+  background: var(--surface-raised);
+  transition:
+    border-color var(--dur-fast) var(--ease-out),
+    background var(--dur-fast) var(--ease-out),
+    color var(--dur-fast) var(--ease-out),
+    box-shadow var(--dur-fast) var(--ease-out);
+  user-select: none;
+}
+
+.chip:hover {
+  border-color: var(--border-mid);
+  color: var(--text-primary);
+}
+
+.chip:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.chip.active {
+  background: var(--text-primary);
+  border-color: var(--text-primary);
+  color: oklch(0.985 0.004 252);
+  font-weight: 600;
+}
+
+/* Submit */
+.submit-area {
+  margin-top: var(--sp-8);
+  padding-top: var(--sp-6);
+  border-top: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  gap: var(--sp-4);
+}
+
+.btn-primary {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: 10px 20px;
+  background: var(--accent);
+  color: var(--accent-text);
+  border: none;
+  border-radius: var(--r-md);
+  font-family: var(--font-body);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  letter-spacing: -0.01em;
+  transition:
+    background var(--dur-fast) var(--ease-out),
+    box-shadow var(--dur-fast) var(--ease-out),
+    transform var(--dur-fast) var(--ease-out);
+}
+
+.btn-primary:hover {
+  background: var(--accent-hover);
+  box-shadow: 0 4px 12px oklch(0.340 0.180 215 / 0.30);
+  transform: translateY(-1px);
+}
+
+.btn-primary:active {
+  background: var(--accent-active);
+  transform: translateY(0);
+  box-shadow: none;
+}
+
+.btn-primary:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+
+.btn-arrow {
+  opacity: 0.75;
+  transition: transform var(--dur-mid) var(--ease-out), opacity var(--dur-fast);
+}
+
+.btn-primary:hover .btn-arrow {
+  transform: translateX(3px);
+  opacity: 1;
+}
+
+.submit-meta {
+  font-size: 12px;
+  color: var(--text-tertiary);
+  line-height: 1.5;
+}
+
+.submit-meta strong {
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+/* ────────────────────────
+   SCREEN 2 — LOADING
+──────────────────────── */
+.loading-body {
+  padding: var(--sp-10) var(--sp-8) var(--sp-12);
+  max-width: 560px;
+}
+
+.loading-title {
+  font-family: var(--font-display);
+  font-size: 24px;
+  font-weight: 600;
+  letter-spacing: -0.025em;
+  color: var(--text-primary);
+  margin-bottom: var(--sp-2);
+  font-feature-settings: "ss01";
+  line-height: 1.2;
+}
+
+.loading-subtitle {
+  font-size: 13px;
+  color: var(--text-secondary);
+  margin-bottom: var(--sp-8);
+}
+
+.progress-track {
+  height: 2px;
+  background: var(--border);
+  border-radius: 2px;
+  margin-bottom: var(--sp-8);
+  overflow: hidden;
+}
+
+.progress-fill {
+  height: 100%;
+  width: 42%;
+  background: var(--accent);
+  border-radius: 2px;
+  animation: progress-pulse 2s ease-in-out infinite;
+}
+
+@keyframes progress-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
+
+/* Steps */
+.steps {
+  display: flex;
+  flex-direction: column;
+}
+
+.step-row {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-4);
+  padding: var(--sp-4) 0;
+  position: relative;
+}
+
+.step-row + .step-row::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: var(--border);
+}
+
+.step-icon-wrap {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+.step-icon-wrap.done {
+  background: var(--success-bg);
+}
+
+.step-icon-wrap.running {
+  background: var(--accent-light);
+}
+
+.step-icon-wrap.pending {
+  background: var(--surface-sunken);
+  border: 1px solid var(--border);
+}
+
+.step-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.step-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+  letter-spacing: -0.01em;
+  margin-bottom: 2px;
+}
+
+.step-row.pending .step-name {
+  color: var(--text-tertiary);
+  font-weight: 500;
+}
+
+.step-detail {
+  font-size: 12px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+.step-detail.running {
+  color: var(--accent);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.running-dots {
+  display: flex;
+  gap: 3px;
+  align-items: center;
+}
+
+.running-dots span {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--accent);
+  animation: dot-bounce 1.4s ease-in-out infinite;
+}
+
+.running-dots span:nth-child(2) { animation-delay: 0.16s; }
+.running-dots span:nth-child(3) { animation-delay: 0.32s; }
+
+@keyframes dot-bounce {
+  0%, 80%, 100% { transform: translateY(0); opacity: 0.4; }
+  40% { transform: translateY(-3px); opacity: 1; }
+}
+
+.step-duration {
+  font-size: 11px;
+  color: var(--text-tertiary);
+  margin-top: 2px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ────────────────────────
+   SCREEN 3 — RESULTS
+──────────────────────── */
+.results-layout {
+  display: grid;
+  grid-template-columns: 1fr 248px;
+  min-height: 520px;
+}
+
+.results-main {
+  border-right: 1px solid var(--border);
+  padding: var(--sp-6) var(--sp-8);
+  overflow: hidden;
+}
+
+.results-sidebar {
+  padding: var(--sp-6) var(--sp-5);
+  background: var(--surface);
+}
+
+.section-eyebrow {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.10em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+  margin-bottom: var(--sp-4);
+}
+
+/* Candidate table */
+.table-wrap {
+  overflow-x: auto;
+}
+
+.c-table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+
+.c-table th {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+  text-align: left;
+  padding: 0 var(--sp-3) var(--sp-3) 0;
+  border-bottom: 1px solid var(--border-strong);
+  white-space: nowrap;
+}
+
+.c-table th:first-child { width: 30px; }
+.c-table th:nth-child(2) { width: 30%; }
+.c-table th:nth-child(3) { width: 18%; }
+.c-table th:nth-child(4) { width: 16%; }
+.c-table th:last-child { width: auto; }
+
+.c-table td {
+  padding: 11px var(--sp-3) 11px 0;
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+  font-size: 13px;
+}
+
+.c-table tr:last-child td { border-bottom: none; }
+
+.c-table tbody tr {
+  transition: background var(--dur-fast) var(--ease-out);
+}
+
+.c-table tbody tr:not(.locked):hover td {
+  background: var(--surface);
+}
+
+.c-table tbody tr:not(.locked):hover td:first-child {
+  border-radius: var(--r-sm) 0 0 var(--r-sm);
+}
+
+.c-table tbody tr:not(.locked):hover td:last-child {
+  border-radius: 0 var(--r-sm) var(--r-sm) 0;
+}
+
+.row-num {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--text-tertiary);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.04em;
+}
+
+.c-name {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 16px;
+  letter-spacing: -0.02em;
+  color: var(--text-primary);
+  font-feature-settings: "ss01";
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.c-style {
+  font-size: 11px;
+  color: var(--text-tertiary);
+  margin-top: 2px;
+  font-weight: 500;
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.badge-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.badge.low  { background: var(--success-bg); color: var(--success); }
+.badge.low .badge-dot { background: var(--success); }
+
+.badge.mod  { background: var(--warning-bg); color: var(--warning); }
+.badge.mod .badge-dot { background: var(--warning); }
+
+.badge.high { background: var(--danger-bg); color: var(--danger); }
+.badge.high .badge-dot { background: var(--danger); }
+
+.domains {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.domain-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+.d-tld {
+  color: var(--text-tertiary);
+  font-weight: 500;
+  width: 24px;
+}
+
+.d-status { font-weight: 500; }
+.d-status.free     { color: var(--success); }
+.d-status.taken    { color: var(--danger); }
+.d-status.uncertain{ color: var(--text-tertiary); }
+
+/* Locked rows */
+.locked td {
+  filter: blur(4px);
+  opacity: 0.22;
+  pointer-events: none;
+  user-select: none;
+}
+
+.lock-row td {
+  padding: var(--sp-2) 0;
+  border-bottom: none;
+}
+
+.lock-notice {
+  font-size: 12px;
+  color: var(--text-tertiary);
+  padding: var(--sp-2) 0;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
+/* Sidebar */
+.sidebar-brief {
+  padding: var(--sp-4);
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  font-size: 12px;
+  color: var(--text-secondary);
+  line-height: 1.65;
+  font-style: italic;
+  margin-bottom: var(--sp-5);
+}
+
+.sidebar-stats {
+  margin-bottom: var(--sp-5);
+}
+
+.stat-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  padding: 7px 0;
+  font-size: 12px;
+}
+
+.stat-row + .stat-row {
+  border-top: 1px solid var(--border);
+}
+
+.stat-label { color: var(--text-tertiary); }
+.stat-val   { font-weight: 600; color: var(--text-primary); font-variant-numeric: tabular-nums; }
+.stat-val.green { color: var(--success); }
+
+.registries {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.reg-tag {
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 700;
+  background: var(--accent-light);
+  color: var(--accent);
+  letter-spacing: 0.03em;
+}
+
+/* Unlock */
+.unlock-panel {
+  padding: var(--sp-4);
+  background: var(--surface-raised);
+  border: 1px solid var(--border-mid);
+  border-radius: var(--r-md);
+}
+
+.unlock-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin-bottom: var(--sp-2);
+}
+
+.unlock-heading {
+  font-family: var(--font-display);
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--text-primary);
+  line-height: 1.2;
+  margin-bottom: var(--sp-2);
+  font-feature-settings: "ss01";
+}
+
+.unlock-list {
+  list-style: none;
+  margin-bottom: var(--sp-4);
+}
+
+.unlock-list li {
+  font-size: 12px;
+  color: var(--text-secondary);
+  padding: 4px 0;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  line-height: 1.4;
+}
+
+.unlock-list li::before {
+  content: '';
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--border-mid);
+  flex-shrink: 0;
+}
+
+.btn-unlock {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 11px var(--sp-4);
+  background: var(--accent);
+  color: var(--accent-text);
+  border: none;
+  border-radius: var(--r-md);
+  font-family: var(--font-body);
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  letter-spacing: -0.01em;
+  transition:
+    background var(--dur-fast) var(--ease-out),
+    box-shadow var(--dur-fast) var(--ease-out),
+    transform var(--dur-fast) var(--ease-out);
+}
+
+.btn-unlock:hover {
+  background: var(--accent-hover);
+  box-shadow: 0 4px 14px oklch(0.340 0.180 215 / 0.28);
+  transform: translateY(-1px);
+}
+
+.btn-unlock:active {
+  background: var(--accent-active);
+  transform: translateY(0);
+  box-shadow: none;
+}
+
+.btn-price {
+  font-size: 13px;
+  opacity: 0.75;
+  font-weight: 500;
+}
+
+.unlock-fine {
+  font-size: 11px;
+  color: var(--text-tertiary);
+  text-align: center;
+  margin-top: var(--sp-2);
+}
+
+/* ────────────────────────
+   LOADING — REGISTRY GRID
+──────────────────────── */
+.reg-grid {
+  display: grid;
+  grid-template-columns: 1fr 1px 1fr 1px 1fr;
+  gap: 0 var(--sp-5);
+  padding: var(--sp-5);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  margin-bottom: var(--sp-6);
+}
+
+.reg-col-divider {
+  background: var(--border);
+  align-self: stretch;
+}
+
+.reg-col-name {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin-bottom: var(--sp-3);
+}
+
+.reg-col-queries {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin-bottom: var(--sp-3);
+}
+
+.reg-q {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-tertiary);
+}
+
+.reg-q::before {
+  content: '';
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: var(--border-mid);
+}
+
+.reg-q.done { color: var(--success); }
+.reg-q.done::before { background: var(--success); }
+
+.reg-q.running { color: var(--accent); }
+.reg-q.running::before {
+  background: var(--accent);
+  animation: dot-pulse 1s ease-in-out infinite;
+}
+
+@keyframes dot-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.35; transform: scale(0.65); }
+}
+
+.inline-spin {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  border: 1.5px solid var(--accent-light);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.75s linear infinite;
+  margin-left: 3px;
+  vertical-align: middle;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.reg-col-count {
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-tertiary);
+  border-top: 1px solid var(--border);
+  padding-top: var(--sp-2);
+}
+
+.reg-col-count span {
+  font-weight: 700;
+  color: var(--text-secondary);
+}
+
+/* Feed */
+.feed-label {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+  margin-bottom: var(--sp-2);
+}
+
+.query-feed {
+  background: var(--surface-sunken);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  padding: var(--sp-2) var(--sp-4);
+  overflow: hidden;
+}
+
+.feed-line {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: 5px 0;
+  opacity: 0;
+  animation: feed-in var(--dur-mid) var(--ease-out) forwards;
+  animation-delay: calc(var(--i) * 260ms);
+}
+
+.feed-line + .feed-line {
+  border-top: 1px solid var(--border);
+}
+
+@keyframes feed-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.feed-status {
+  font-size: 10px;
+  font-weight: 700;
+  width: 12px;
+  flex-shrink: 0;
+  color: var(--text-tertiary);
+  font-variant-numeric: tabular-nums;
+}
+
+.feed-line.done .feed-status { color: var(--success); }
+.feed-line.running .feed-status { color: var(--accent); }
+
+.feed-body {
+  font-size: 11px;
+  color: var(--text-tertiary);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.feed-line.done .feed-body { color: var(--text-secondary); }
+.feed-line.running .feed-body { color: var(--text-body); font-weight: 500; }
+
+/* ── SVG Icons ── */
+.icon { display: inline-block; flex-shrink: 0; }
+</style>
+</head>
+<body>
+
+<div class="demo-shell">
+  <div class="demo-header">
+    <span class="demo-title">Namewright — Polished UI concepts</span>
+    <div class="screen-tabs" role="tablist">
+      <button class="tab-btn active" role="tab" onclick="showScreen('intake', this)">1 · Intake brief</button>
+      <button class="tab-btn" role="tab" onclick="showScreen('loading', this)">2 · Researching</button>
+      <button class="tab-btn" role="tab" onclick="showScreen('results', this)">3 · Results</button>
+    </div>
+  </div>
+
+  <div class="app-frame">
+
+    <!-- ── SCREEN 1: INTAKE ── -->
+    <div class="screen active" id="screen-intake">
+      <div class="app-header">
+        <div class="wordmark">
+          <span class="wordmark-dot"></span>
+          Namewright
+        </div>
+        <span class="header-tag">Brand Name Research</span>
+      </div>
+
+      <div class="intake-body">
+        <div class="screen-eyebrow">New research brief</div>
+        <h1 class="screen-title">Name your product<br>defensibly.</h1>
+        <p class="screen-subtitle">We cross-verify 8–12 ranked brand name candidates against USPTO, EUIPO, and WIPO Madrid registries — trademark risk and domain availability for each.</p>
+
+        <form onsubmit="return false">
+          <div class="field">
+            <div class="field-header">
+              <span class="field-index">01</span>
+              <label class="field-label" for="desc">Describe your product</label>
+            </div>
+            <textarea id="desc" rows="3" placeholder="Product category, core function, who it's for. A sentence or two." aria-describedby="desc-hint"></textarea>
+            <p class="field-hint" id="desc-hint">Be specific about the audience and job-to-be-done — it improves name quality significantly.</p>
+          </div>
+
+          <div class="field">
+            <div class="field-header">
+              <span class="field-index">02</span>
+              <span class="field-label">Brand personality</span>
+            </div>
+            <div class="chips" role="group" aria-label="Brand personality">
+              <button type="button" class="chip" onclick="toggleChip(this, 'personality')">Serious · technical</button>
+              <button type="button" class="chip active" onclick="toggleChip(this, 'personality')">Playful · approachable</button>
+              <button type="button" class="chip" onclick="toggleChip(this, 'personality')">Premium · refined</button>
+              <button type="button" class="chip" onclick="toggleChip(this, 'personality')">Utilitarian · direct</button>
+              <button type="button" class="chip" onclick="toggleChip(this, 'personality')">Bold · contrarian</button>
+            </div>
+          </div>
+
+          <div class="field">
+            <div class="field-header">
+              <span class="field-index">03</span>
+              <span class="field-label">Primary market</span>
+            </div>
+            <div class="chips" role="group" aria-label="Primary market">
+              <button type="button" class="chip active" onclick="toggleChip(this, 'market')">US-first</button>
+              <button type="button" class="chip" onclick="toggleChip(this, 'market')">Global</button>
+              <button type="button" class="chip" onclick="toggleChip(this, 'market')">Australia · APAC</button>
+              <button type="button" class="chip" onclick="toggleChip(this, 'market')">Europe</button>
+              <button type="button" class="chip" onclick="toggleChip(this, 'market')">China · Asia</button>
+            </div>
+          </div>
+
+          <div class="field">
+            <div class="field-header">
+              <span class="field-index">04</span>
+              <label class="field-label" for="constraints">Constraints <span class="field-optional">— optional</span></label>
+            </div>
+            <input type="text" id="constraints" placeholder="e.g. Under 8 characters. Must be pronounceable in Mandarin.">
+          </div>
+
+          <div class="submit-area">
+            <button type="submit" class="btn-primary" onclick="showScreen('loading', null); setTimeout(()=>showScreen('results',null),2800)">
+              Run research
+              <svg class="btn-arrow icon" width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+                <path d="M2.5 7h9M8 3.5 11.5 7 8 10.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+            </button>
+            <div class="submit-meta">
+              ~30 seconds<br>
+              <strong>USPTO · EUIPO · WIPO Madrid</strong> searched in parallel
+            </div>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- ── SCREEN 2: LOADING ── -->
+    <div class="screen" id="screen-loading">
+      <div class="app-header">
+        <div class="wordmark">
+          <span class="wordmark-dot" style="animation: pulse-dot 1.2s ease-in-out infinite"></span>
+          Namewright
+        </div>
+        <span class="header-tag">Research in progress…</span>
+      </div>
+
+      <style>
+        @keyframes pulse-dot { 0%,100%{opacity:1} 50%{opacity:0.3} }
+      </style>
+
+      <div class="loading-body">
+        <h2 class="loading-title">Researching name candidates<br>for your product.</h2>
+        <p class="loading-subtitle">Parallel trademark registry queries — this takes 20–40 seconds.</p>
+
+        <div class="reg-grid" aria-label="Registry query status">
+          <div class="reg-col">
+            <div class="reg-col-name">USPTO TESS</div>
+            <div class="reg-col-queries">
+              <div class="reg-q done">Exact match</div>
+              <div class="reg-q done">Phonetic</div>
+              <div class="reg-q running">Fuzzy <span class="inline-spin" aria-hidden="true"></span></div>
+            </div>
+            <div class="reg-col-count"><span>24</span> queries done</div>
+          </div>
+          <div class="reg-col-divider" aria-hidden="true"></div>
+          <div class="reg-col">
+            <div class="reg-col-name">EUIPO</div>
+            <div class="reg-col-queries">
+              <div class="reg-q done">Exact match</div>
+              <div class="reg-q running">Phonetic <span class="inline-spin" aria-hidden="true"></span></div>
+              <div class="reg-q">Fuzzy</div>
+            </div>
+            <div class="reg-col-count"><span>18</span> queries done</div>
+          </div>
+          <div class="reg-col-divider" aria-hidden="true"></div>
+          <div class="reg-col">
+            <div class="reg-col-name">WIPO Madrid</div>
+            <div class="reg-col-queries">
+              <div class="reg-q running">Exact match <span class="inline-spin" aria-hidden="true"></span></div>
+              <div class="reg-q">Phonetic</div>
+              <div class="reg-q">Fuzzy</div>
+            </div>
+            <div class="reg-col-count"><span>9</span> queries done</div>
+          </div>
+        </div>
+
+        <div class="feed-label">Live query feed</div>
+        <div class="query-feed" role="log" aria-live="polite" aria-label="Research activity log">
+          <div class="feed-line done" style="--i:0"><span class="feed-status">✓</span><span class="feed-body">USPTO · Latchkey · exact · Class 38 — no conflict</span></div>
+          <div class="feed-line done" style="--i:1"><span class="feed-status">✓</span><span class="feed-body">EUIPO · Latchkey · exact · Class 38 — clear</span></div>
+          <div class="feed-line done" style="--i:2"><span class="feed-status">✓</span><span class="feed-body">USPTO · Pariva · exact · Class 38 — no conflict</span></div>
+          <div class="feed-line done" style="--i:3"><span class="feed-status">✓</span><span class="feed-body">EUIPO · Pariva · phonetic · Class 38 — clear</span></div>
+          <div class="feed-line done" style="--i:4"><span class="feed-status">✓</span><span class="feed-body">USPTO · Veltr · exact — no conflict</span></div>
+          <div class="feed-line running" style="--i:5"><span class="feed-status">↻</span><span class="feed-body">WIPO · Latchkey · exact — checking…</span></div>
+          <div class="feed-line pending" style="--i:6"><span class="feed-status">○</span><span class="feed-body">USPTO · Latchkey · fuzzy — queued</span></div>
+          <div class="feed-line pending" style="--i:7"><span class="feed-status">○</span><span class="feed-body">EUIPO · Veltr · phonetic — queued</span></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── SCREEN 3: RESULTS ── -->
+    <div class="screen" id="screen-results">
+      <div class="app-header">
+        <div class="wordmark">
+          <span class="wordmark-dot"></span>
+          Namewright
+        </div>
+        <span class="header-tag">12 candidates · USPTO + EUIPO + WIPO verified</span>
+      </div>
+
+      <div class="results-layout">
+        <div class="results-main">
+          <div class="section-eyebrow">All candidates — ranked by viability</div>
+
+          <div class="table-wrap">
+            <table class="c-table" aria-label="Brand name candidates">
+              <thead>
+                <tr>
+                  <th scope="col" aria-label="Rank">#</th>
+                  <th scope="col">Name</th>
+                  <th scope="col">Style</th>
+                  <th scope="col">TM Risk</th>
+                  <th scope="col">Domains</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><span class="row-num">01</span></td>
+                  <td>
+                    <div class="c-name">Latchkey</div>
+                    <div class="c-style">Metaphorical</div>
+                  </td>
+                  <td><span class="badge low"><span class="badge-dot"></span>Low</span></td>
+                  <td>
+                    <div class="domains">
+                      <div class="domain-item"><span class="d-tld">.com</span><span class="d-status free">Free</span></div>
+                      <div class="domain-item"><span class="d-tld">.io</span><span class="d-status free">Free</span></div>
+                      <div class="domain-item"><span class="d-tld">.co</span><span class="d-status uncertain">Uncertain</span></div>
+                    </div>
+                  </td>
+                </tr>
+                <tr>
+                  <td><span class="row-num">02</span></td>
+                  <td>
+                    <div class="c-name">Pariva</div>
+                    <div class="c-style">Invented</div>
+                  </td>
+                  <td><span class="badge low"><span class="badge-dot"></span>Low</span></td>
+                  <td>
+                    <div class="domains">
+                      <div class="domain-item"><span class="d-tld">.com</span><span class="d-status uncertain">Uncertain</span></div>
+                      <div class="domain-item"><span class="d-tld">.io</span><span class="d-status free">Free</span></div>
+                      <div class="domain-item"><span class="d-tld">.co</span><span class="d-status free">Free</span></div>
+                    </div>
+                  </td>
+                </tr>
+                <tr>
+                  <td><span class="row-num">03</span></td>
+                  <td>
+                    <div class="c-name">Veltr</div>
+                    <div class="c-style">Invented</div>
+                  </td>
+                  <td><span class="badge low"><span class="badge-dot"></span>Low</span></td>
+                  <td>
+                    <div class="domains">
+                      <div class="domain-item"><span class="d-tld">.com</span><span class="d-status free">Free</span></div>
+                      <div class="domain-item"><span class="d-tld">.io</span><span class="d-status free">Free</span></div>
+                      <div class="domain-item"><span class="d-tld">.co</span><span class="d-status free">Free</span></div>
+                    </div>
+                  </td>
+                </tr>
+                <!-- Locked rows -->
+                <tr class="locked" aria-hidden="true">
+                  <td><span class="row-num">04</span></td>
+                  <td><div class="c-name">Stridova</div><div class="c-style">Invented</div></td>
+                  <td><span class="badge low"><span class="badge-dot"></span>Low</span></td>
+                  <td><div class="domains"><div class="domain-item"><span class="d-tld">.com</span><span class="d-status free">Free</span></div></div></td>
+                </tr>
+                <tr class="locked" aria-hidden="true">
+                  <td><span class="row-num">05</span></td>
+                  <td><div class="c-name">Runmate</div><div class="c-style">Compound</div></td>
+                  <td><span class="badge mod"><span class="badge-dot"></span>Moderate</span></td>
+                  <td><div class="domains"><div class="domain-item"><span class="d-tld">.com</span><span class="d-status taken">Taken</span></div></div></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div class="lock-notice" aria-live="polite">
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+              <rect x="3" y="6" width="8" height="6" rx="1.5" stroke="oklch(0.620 0.010 265)" stroke-width="1.3"/>
+              <path d="M5 6V4.5a2 2 0 1 1 4 0V6" stroke="oklch(0.620 0.010 265)" stroke-width="1.3" stroke-linecap="round"/>
+            </svg>
+            7 more candidates locked — unlock full report to view
+          </div>
+        </div>
+
+        <div class="results-sidebar">
+          <div class="section-eyebrow">Brief</div>
+          <div class="sidebar-brief">"A mobile app connecting solo runners with training partners nearby."</div>
+
+          <div class="section-eyebrow">Report</div>
+          <div class="sidebar-stats">
+            <div class="stat-row">
+              <span class="stat-label">Candidates</span>
+              <span class="stat-val">12</span>
+            </div>
+            <div class="stat-row">
+              <span class="stat-label">Low TM risk</span>
+              <span class="stat-val green">7</span>
+            </div>
+            <div class="stat-row">
+              <span class="stat-label">Registries</span>
+              <span class="stat-val">
+                <div class="registries">
+                  <span class="reg-tag">USPTO</span>
+                  <span class="reg-tag">EUIPO</span>
+                  <span class="reg-tag">WIPO</span>
+                </div>
+              </span>
+            </div>
+            <div class="stat-row">
+              <span class="stat-label">Verified</span>
+              <span class="stat-val">Apr 22, 2026</span>
+            </div>
+          </div>
+
+          <div class="unlock-panel">
+            <div class="unlock-badge">
+              <svg width="11" height="11" viewBox="0 0 11 11" fill="none" aria-hidden="true">
+                <path d="M5.5 1L7 4.5H10.5L7.5 6.5L8.5 10L5.5 8L2.5 10L3.5 6.5L0.5 4.5H4L5.5 1Z" fill="currentColor"/>
+              </svg>
+              Full Report
+            </div>
+            <h3 class="unlock-heading">All 12 candidates<br>+ top picks</h3>
+            <ul class="unlock-list" aria-label="Included in full report">
+              <li>Top 3 recommendations with next steps</li>
+              <li>Detailed trademark notes per candidate</li>
+              <li>Full domain availability for all 12</li>
+              <li>PDF export to share with co-founders</li>
+            </ul>
+            <button class="btn-unlock" type="button">
+              Unlock report
+              <span class="btn-price">$19</span>
+            </button>
+            <p class="unlock-fine">One-time payment · No subscription</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+function showScreen(id, tabEl) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  document.querySelectorAll('.tab-btn').forEach(t => t.classList.remove('active'));
+  document.getElementById('screen-' + id).classList.add('active');
+  if (tabEl) tabEl.classList.add('active');
+  else {
+    const tabs = ['intake','loading','results'];
+    const idx = tabs.indexOf(id);
+    document.querySelectorAll('.tab-btn')[idx].classList.add('active');
+  }
+}
+
+function toggleChip(el, group) {
+  document.querySelectorAll(`.chip`).forEach(c => {
+    if (c.closest(`[aria-label="${group === 'personality' ? 'Brand personality' : 'Primary market'}"]`)) {
+      c.classList.remove('active');
+    }
+  });
+  el.classList.add('active');
+}
+</script>
+
+</body>
+</html>
