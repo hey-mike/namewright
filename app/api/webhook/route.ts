@@ -14,8 +14,22 @@ export async function POST(req: Request) {
   }
 
   if (event.type === 'checkout.session.completed') {
-    const session = event.data.object as unknown as { metadata: { reportId: string } }
+    const session = event.data.object as unknown as {
+      id: string
+      metadata: { reportId: string }
+      payment_status: string
+    }
+
+    if (session.payment_status !== 'paid') {
+      return NextResponse.json({ received: true })
+    }
+
     const reportId = session.metadata.reportId
+    if (!reportId) {
+      console.error('[webhook] Missing reportId in session metadata', session.id)
+      return NextResponse.json({ error: 'Missing reportId' }, { status: 400 })
+    }
+
     const token = await signSession(reportId, true)
 
     const res = NextResponse.json({ received: true })

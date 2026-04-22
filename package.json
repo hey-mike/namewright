@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.90.0",
+    "@signa-so/sdk": "^0.2.2",
     "@vercel/kv": "^3.0.0",
     "jose": "^6.2.2",
     "next": "16.2.4",

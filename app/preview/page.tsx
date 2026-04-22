@@ -15,7 +15,13 @@ function PreviewContent() {
   useEffect(() => {
     setSummary(sessionStorage.getItem('report_summary') ?? '')
     const raw = sessionStorage.getItem('report_preview')
-    if (raw) setCandidates(JSON.parse(raw))
+    if (raw) {
+      try {
+        setCandidates(JSON.parse(raw))
+      } catch {
+        sessionStorage.removeItem('report_preview')
+      }
+    }
   }, [])
 
   async function handleUnlock() {
