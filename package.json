@@ -3,7 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
+    "dev": "concurrently -n next,stripe -c cyan,magenta --handle-input npm:dev:next npm:dev:stripe",
+    "dev:next": "next dev",
+    "dev:stripe": "stripe listen --forward-to http://localhost:3000/api/webhook",
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
@@ -43,6 +45,7 @@
     "@types/pino": "^7.0.4",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "concurrently": "^9.2.1",
     "eslint": "^9",
     "eslint-config-next": "16.2.4",
     "husky": "^9.1.7",
