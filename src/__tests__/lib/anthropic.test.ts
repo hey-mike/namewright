@@ -180,6 +180,7 @@ const MOCK_TRADEMARK: TrademarkCheckResult = {
   risk: 'low',
   notes: 'No conflicts found.',
   sources: ['Signa (USPTO + EUIPO)'],
+  conflicts: [],
 }
 
 const MOCK_DOMAINS: DomainAvailability = {
@@ -251,7 +252,7 @@ describe('synthesiseReport', () => {
 
     const callArgs = mockCreate.mock.calls[0][0]
     expect(callArgs.messages[0].content).toContain('Brand0')
-    expect(callArgs.messages[0].content).toContain('No conflicts found')
+    expect(callArgs.messages[0].content).toContain('Conflicts: none found')
     expect(callArgs.messages[0].content).toContain('TLD com: available')
   })
 
@@ -276,6 +277,7 @@ jest.mock('@/lib/dns', () => ({
 }))
 jest.mock('@/lib/euipo', () => ({
   checkAllEuipoTrademarks: jest.fn(),
+  shouldQueryEuipo: jest.fn().mockReturnValue(true),
 }))
 jest.mock('@/lib/flags', () => ({
   isFlagEnabled: jest.fn(),
@@ -284,7 +286,7 @@ jest.mock('@/lib/flags', () => ({
 import { checkAllTrademarks } from '@/lib/signa'
 import type { TrademarkCheckResult } from '@/lib/signa'
 import { checkAllDomains } from '@/lib/dns'
-import { checkAllEuipoTrademarks } from '@/lib/euipo'
+import { checkAllEuipoTrademarks, shouldQueryEuipo } from '@/lib/euipo'
 import { isFlagEnabled } from '@/lib/flags'
 import { generateReport, mergeTrademarkResults } from '@/lib/anthropic'
 
@@ -297,7 +299,17 @@ const mkTrademark = (
   risk,
   notes: `${source}: ${risk}`,
   sources: [source],
+  conflicts: [],
 })
+
+// Helper for tests that exercise generateReport — the orchestrator fires
+// generateCandidates + inferNiceClass in parallel, then synthesiseReport,
+// so each full run costs 3 LLM responses.
+function mockGenerateReportResponses(proposals: unknown, niceClass: number, report: unknown) {
+  mockCreate.mockResolvedValueOnce(makeTextResponse(JSON.stringify(proposals)))
+  mockCreate.mockResolvedValueOnce(makeTextResponse(String(niceClass)))
+  mockCreate.mockResolvedValueOnce(makeTextResponse(JSON.stringify(report)))
+}
 
 describe('generateReport orchestrator', () => {
   beforeEach(() => {
@@ -306,13 +318,11 @@ describe('generateReport orchestrator', () => {
     ;(checkAllDomains as jest.Mock).mockResolvedValue(new Map())
     ;(checkAllEuipoTrademarks as jest.Mock).mockResolvedValue(new Map())
     ;(isFlagEnabled as jest.Mock).mockResolvedValue(false)
+    ;(shouldQueryEuipo as jest.Mock).mockReturnValue(true)
   })
 
-  it('calls generateCandidates then verification then synthesiseReport', async () => {
-    // Step 1 returns proposals
-    mockCreate.mockResolvedValueOnce(makeTextResponse(JSON.stringify(MOCK_PROPOSALS)))
-    // Step 3 returns full report
-    mockCreate.mockResolvedValueOnce(makeTextResponse(JSON.stringify(MOCK_FULL_REPORT)))
+  it('calls generateCandidates + inferNiceClass then verification then synthesiseReport', async () => {
+    mockGenerateReportResponses(MOCK_PROPOSALS, 42, MOCK_FULL_REPORT)
 
     const result = await generateReport({
       description: 'A SaaS tool',
@@ -321,10 +331,38 @@ describe('generateReport orchestrator', () => {
       geography: 'Global',
     })
 
-    expect(checkAllTrademarks).toHaveBeenCalledWith(MOCK_PROPOSALS, 42)
+    expect(checkAllTrademarks).toHaveBeenCalledWith(MOCK_PROPOSALS, 42, 'Global')
     expect(checkAllDomains).toHaveBeenCalledWith(MOCK_PROPOSALS, ['com', 'io', 'co'])
-    expect(mockCreate).toHaveBeenCalledTimes(2)
+    expect(mockCreate).toHaveBeenCalledTimes(3)
     expect(result.candidates).toHaveLength(8)
+  })
+
+  it('passes the inferred Nice class to the trademark check', async () => {
+    mockGenerateReportResponses(MOCK_PROPOSALS, 30, MOCK_FULL_REPORT)
+
+    await generateReport({
+      description: 'A coffee shop in Brooklyn',
+      personality: 'Playful / approachable',
+      constraints: '',
+      geography: 'US-first',
+    })
+
+    expect(checkAllTrademarks).toHaveBeenCalledWith(MOCK_PROPOSALS, 30, 'US-first')
+  })
+
+  it('falls back to Nice class 42 when inference returns non-numeric output', async () => {
+    mockCreate.mockResolvedValueOnce(makeTextResponse(JSON.stringify(MOCK_PROPOSALS)))
+    mockCreate.mockResolvedValueOnce(makeTextResponse('I am not sure what class this is'))
+    mockCreate.mockResolvedValueOnce(makeTextResponse(JSON.stringify(MOCK_FULL_REPORT)))
+
+    await generateReport({
+      description: 'A SaaS tool',
+      personality: 'Bold / contrarian',
+      constraints: '',
+      geography: 'Global',
+    })
+
+    expect(checkAllTrademarks).toHaveBeenCalledWith(MOCK_PROPOSALS, 42, 'Global')
   })
 
   it('throws when both Signa and DNS fail', async () => {
@@ -332,6 +370,7 @@ describe('generateReport orchestrator', () => {
     ;(checkAllDomains as jest.Mock).mockRejectedValue(new Error('DNS down'))
 
     mockCreate.mockResolvedValueOnce(makeTextResponse(JSON.stringify(MOCK_PROPOSALS)))
+    mockCreate.mockResolvedValueOnce(makeTextResponse('42'))
 
     await expect(
       generateReport({
@@ -345,8 +384,7 @@ describe('generateReport orchestrator', () => {
 
   it('skips EUIPO when the LD flag is off', async () => {
     ;(isFlagEnabled as jest.Mock).mockResolvedValue(false)
-    mockCreate.mockResolvedValueOnce(makeTextResponse(JSON.stringify(MOCK_PROPOSALS)))
-    mockCreate.mockResolvedValueOnce(makeTextResponse(JSON.stringify(MOCK_FULL_REPORT)))
+    mockGenerateReportResponses(MOCK_PROPOSALS, 42, MOCK_FULL_REPORT)
 
     await generateReport({
       description: 'A SaaS tool',
@@ -358,7 +396,22 @@ describe('generateReport orchestrator', () => {
     expect(checkAllEuipoTrademarks).not.toHaveBeenCalled()
   })
 
-  it('queries Signa and EUIPO in parallel when the LD flag is on', async () => {
+  it('skips EUIPO when the flag is on but geography does not include the EU', async () => {
+    ;(isFlagEnabled as jest.Mock).mockResolvedValue(true)
+    ;(shouldQueryEuipo as jest.Mock).mockReturnValue(false)
+    mockGenerateReportResponses(MOCK_PROPOSALS, 42, MOCK_FULL_REPORT)
+
+    await generateReport({
+      description: 'A SaaS tool',
+      personality: 'Bold / contrarian',
+      constraints: '',
+      geography: 'US-first',
+    })
+
+    expect(checkAllEuipoTrademarks).not.toHaveBeenCalled()
+  })
+
+  it('queries Signa and EUIPO in parallel when the LD flag is on and geography includes EU', async () => {
     ;(isFlagEnabled as jest.Mock).mockResolvedValue(true)
     ;(checkAllTrademarks as jest.Mock).mockResolvedValue(
       new Map([['Brand0', mkTrademark('Brand0', 'low', 'Signa')]])
@@ -366,8 +419,7 @@ describe('generateReport orchestrator', () => {
     ;(checkAllEuipoTrademarks as jest.Mock).mockResolvedValue(
       new Map([['Brand0', mkTrademark('Brand0', 'low', 'EUIPO direct')]])
     )
-    mockCreate.mockResolvedValueOnce(makeTextResponse(JSON.stringify(MOCK_PROPOSALS)))
-    mockCreate.mockResolvedValueOnce(makeTextResponse(JSON.stringify(MOCK_FULL_REPORT)))
+    mockGenerateReportResponses(MOCK_PROPOSALS, 42, MOCK_FULL_REPORT)
 
     await generateReport(
       {
@@ -426,6 +478,7 @@ describe('mergeTrademarkResults', () => {
       risk: 'uncertain',
       notes: 'unavailable',
       sources: [],
+      conflicts: [],
     }
     const merged = mergeTrademarkResults(uncertain, mkTrademark('Acme', 'moderate', 'EUIPO direct'))
 
@@ -441,6 +494,7 @@ describe('mergeTrademarkResults', () => {
       risk: 'uncertain',
       notes: 'unavailable',
       sources: [],
+      conflicts: [],
     })
 
     const merged = mergeTrademarkResults(uncertain('Acme'), uncertain('Acme'))

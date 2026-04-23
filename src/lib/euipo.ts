@@ -1,5 +1,6 @@
 import logger from './logger'
-import type { TrademarkCheckResult } from './signa'
+import { officesForGeography } from './geography'
+import type { TrademarkCheckResult, TrademarkConflict } from './signa'
 
 // EUIPO OIDC client_credentials flow (per dev.euipo.europa.eu/security):
 //   POST <auth-base>/oidc/accessToken
@@ -140,23 +141,39 @@ async function searchTrademarks(
 
 function scoreFromMarks(marks: EuipoMark[]): TrademarkCheckResult['risk'] {
   if (marks.length === 0) return 'low'
-  // EUIPO search treats the query against mark_text directly. Any hit at the
-  // matching Nice class is at least moderate; multiple hits become high.
+  // EUIPO direct doesn't return a relevance score, so fall back to count-based
+  // bucketing. The Signa side handles severity weighting; EUIPO acts as a
+  // confirming/disconfirming signal.
   if (marks.length === 1) return 'moderate'
   return 'high'
 }
 
-function buildNotes(query: string, marks: EuipoMark[]): string {
-  if (marks.length === 0) {
+function toConflict(m: EuipoMark): TrademarkConflict {
+  const lowerStatus = (m.status ?? '').toLowerCase()
+  return {
+    markText: m.mark_text ?? '?',
+    office: 'euipo',
+    jurisdiction: 'EU',
+    niceClasses: m.nice_classes ?? [],
+    registrationNumber: m.registration_number,
+    filingDate: m.filing_date,
+    isLive:
+      lowerStatus === '' || lowerStatus.includes('register') || lowerStatus.includes('active'),
+    relevanceScore: 0, // EUIPO direct does not expose a relevance score
+  }
+}
+
+function buildNotes(query: string, conflicts: TrademarkConflict[]): string {
+  if (conflicts.length === 0) {
     return `No EUIPO conflicts found for "${query}".`
   }
-  const cited = marks.slice(0, 3).map((m) => {
-    const parts = [m.mark_text ?? '?']
-    if (m.registration_number) parts.push(`reg ${m.registration_number}`)
-    if (m.filing_date) parts.push(`filed ${m.filing_date.slice(0, 10)}`)
+  const cited = conflicts.slice(0, 3).map((c) => {
+    const parts = [c.markText]
+    if (c.registrationNumber) parts.push(`reg ${c.registrationNumber}`)
+    if (c.filingDate) parts.push(`filed ${c.filingDate.slice(0, 10)}`)
     return parts.join(', ')
   })
-  const overflow = marks.length > 3 ? ` (+${marks.length - 3} more)` : ''
+  const overflow = conflicts.length > 3 ? ` (+${conflicts.length - 3} more)` : ''
   return `EUIPO conflicts: ${cited.join('; ')}${overflow}.`
 }
 
@@ -165,6 +182,11 @@ const EUIPO_UNAVAILABLE: TrademarkCheckResult = {
   risk: 'uncertain',
   notes: 'EUIPO search unavailable.',
   sources: [],
+  conflicts: [],
+}
+
+export function shouldQueryEuipo(geography: string): boolean {
+  return officesForGeography(geography).includes('euipo')
 }
 
 export async function checkEuipoTrademark(
@@ -181,11 +203,13 @@ export async function checkEuipoTrademark(
     const token = await fetchAccessToken(cfg)
     const response = await searchTrademarks(cfg, token, candidateName, niceClass)
     const marks = response.data ?? []
+    const conflicts = marks.map(toConflict)
     return {
       candidateName,
       risk: scoreFromMarks(marks),
-      notes: buildNotes(candidateName, marks),
+      notes: buildNotes(candidateName, conflicts),
       sources: ['EUIPO direct'],
+      conflicts,
     }
   } catch (err) {
     logger.warn(

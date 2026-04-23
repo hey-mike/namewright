@@ -5,9 +5,10 @@ import {
   checkAllTrademarks,
   TRADEMARK_UNAVAILABLE_NOTES,
   type TrademarkCheckResult,
+  type TrademarkConflict,
   type TrademarkRisk,
 } from './signa'
-import { checkAllEuipoTrademarks } from './euipo'
+import { checkAllEuipoTrademarks, shouldQueryEuipo } from './euipo'
 import { checkAllDomains } from './dns'
 import { isFlagEnabled } from './flags'
 import logger from './logger'
@@ -18,8 +19,11 @@ const VALID_STYLES = new Set(['descriptive', 'invented', 'metaphorical', 'acrony
 const VALID_RISKS = new Set(['low', 'moderate', 'high', 'uncertain'])
 const VALID_DOMAIN_STATUS = new Set(['available', 'taken', 'likely taken', 'uncertain'])
 
-// Nice Class 42: computer software and SaaS services
+// Nice Class 42: computer software and SaaS services. Used as a fallback when
+// inference fails — most of our traffic is software but the inference step
+// catches non-software briefs (coffee shops, agencies, hardware, etc.).
 const NICE_CLASS_SOFTWARE = 42
+const VALID_NICE_CLASSES = new Set(Array.from({ length: 45 }, (_, i) => i + 1))
 
 // LD flag gating the parallel EUIPO direct cross-check on top of Signa.
 const EUIPO_CROSS_CHECK_FLAG = 'euipo-direct-cross-check'
@@ -37,6 +41,20 @@ const RISK_RANK: Record<TrademarkRisk, number> = {
 // the worst risk. Both clean → "cross-verified low". Both uncertain → uncertain.
 // Sources that disagree on a concrete result get the worst risk plus a
 // disagreement note so the LLM can surface it to the user.
+// Dedupe conflicts by mark text + office + registration number so a hit found
+// by both sources only appears once in the merged report.
+function dedupeConflicts(conflicts: TrademarkConflict[]): TrademarkConflict[] {
+  const seen = new Set<string>()
+  const out: TrademarkConflict[] = []
+  for (const c of conflicts) {
+    const key = `${c.markText.toLowerCase()}|${c.office}|${c.registrationNumber ?? ''}`
+    if (seen.has(key)) continue
+    seen.add(key)
+    out.push(c)
+  }
+  return out
+}
+
 export function mergeTrademarkResults(
   signa: TrademarkCheckResult,
   euipo: TrademarkCheckResult
@@ -49,6 +67,7 @@ export function mergeTrademarkResults(
       risk: 'uncertain',
       notes: 'Trademark searches across Signa and EUIPO were both unavailable.',
       sources: [],
+      conflicts: [],
     }
   }
 
@@ -60,6 +79,7 @@ export function mergeTrademarkResults(
   if (euipo.sources.length > 0) concreteNotes.push(euipo.notes)
 
   const sources = [...signa.sources, ...euipo.sources]
+  const conflicts = dedupeConflicts([...signa.conflicts, ...euipo.conflicts])
   const crossVerifiedClean = signa.risk === 'low' && euipo.risk === 'low'
   const sourcesDisagree =
     signa.risk !== 'uncertain' && euipo.risk !== 'uncertain' && signa.risk !== euipo.risk
@@ -76,24 +96,28 @@ export function mergeTrademarkResults(
     risk: worstRisk,
     notes: prefix + concreteNotes.join(' '),
     sources,
+    conflicts,
   }
 }
 
 // Build a map of merged trademark results by running Signa and (if the LD flag
-// is on) EUIPO in parallel. Falls back to Signa-only when the flag is off or
-// LD is unreachable.
+// is on AND the user's geography includes EU/UK) EUIPO in parallel. Falls back
+// to Signa-only when the flag is off, LD is unreachable, or geography excludes
+// EU.
 async function checkAllTrademarksWithCrossSource(
   proposals: CandidateProposal[],
   niceClass: number,
+  geography: string,
   requestId: string
 ): Promise<Map<string, TrademarkCheckResult>> {
-  const useEuipo = await isFlagEnabled(EUIPO_CROSS_CHECK_FLAG, { key: requestId }, false)
+  const flagOn = await isFlagEnabled(EUIPO_CROSS_CHECK_FLAG, { key: requestId }, false)
+  const useEuipo = flagOn && shouldQueryEuipo(geography)
   if (!useEuipo) {
-    return checkAllTrademarks(proposals, niceClass)
+    return checkAllTrademarks(proposals, niceClass, geography)
   }
 
   const [signaResult, euipoResult] = await Promise.allSettled([
-    checkAllTrademarks(proposals, niceClass),
+    checkAllTrademarks(proposals, niceClass, geography),
     checkAllEuipoTrademarks(proposals, niceClass),
   ])
 
@@ -114,6 +138,7 @@ async function checkAllTrademarksWithCrossSource(
     risk: 'uncertain',
     notes: TRADEMARK_UNAVAILABLE_NOTES,
     sources: [],
+    conflicts: [],
   })
 
   return new Map(
@@ -240,6 +265,54 @@ export function parseProposals(text: string): CandidateProposal[] {
   return parsed as CandidateProposal[]
 }
 
+const NICE_CLASS_INFERENCE_PROMPT = `You are a trademark filing specialist. Identify the single most relevant Nice Classification (1-45) for the product described, the class an applicant would file under to register a brand name for it.
+
+Common picks:
+- Class 9: downloadable software, mobile apps, computer hardware
+- Class 25: clothing, footwear, headgear
+- Class 30: coffee, tea, baked goods, packaged food
+- Class 35: retail services, advertising, business consulting
+- Class 36: financial services, insurance, real estate
+- Class 41: education, entertainment, training
+- Class 42: SaaS, software-as-a-service, IT consulting, technology platforms
+- Class 43: restaurants, cafes, hotels
+- Class 44: health and beauty services, medical, agricultural
+- Class 45: legal services, security services, dating services
+
+Respond with only a single integer between 1 and 45. No explanation, no JSON, no other characters.`
+
+export async function inferNiceClass(req: GenerateRequest): Promise<number> {
+  try {
+    const response = await client.messages.create({
+      model: 'claude-sonnet-4-6',
+      max_tokens: 10,
+      system: NICE_CLASS_INFERENCE_PROMPT,
+      messages: [
+        {
+          role: 'user',
+          content: `Product description: ${req.description}\n\nPrimary market: ${req.geography}`,
+        },
+      ],
+    })
+
+    const text = extractText(response.content).trim()
+    const parsed = parseInt(text, 10)
+    if (Number.isFinite(parsed) && VALID_NICE_CLASSES.has(parsed)) {
+      return parsed
+    }
+    logger.warn({ text }, 'Nice class inference returned non-numeric — falling back to 42')
+    return NICE_CLASS_SOFTWARE
+  } catch (err) {
+    // Inference is non-critical — failing here would block the whole pipeline.
+    // Fall back to the software default and let the pipeline continue.
+    logger.warn(
+      { err: err instanceof Error ? err.message : String(err) },
+      'Nice class inference failed — falling back to 42'
+    )
+    return NICE_CLASS_SOFTWARE
+  }
+}
+
 const GENERATE_CANDIDATES_PROMPT = `You are a brand naming specialist. Generate 8-12 brand name candidates for the product described.
 
 # Instructions
@@ -306,7 +379,8 @@ interface VerifiedCandidate extends CandidateProposal {
 const SYNTHESISE_REPORT_PROMPT = `You are a brand strategy expert. You have been given a list of brand name candidates with trademark search results and real domain availability data. Produce a final brand name report.
 
 # Instructions
-- Assess trademark risk using the data provided — cite specific conflicts found, or explain why risk is low or uncertain.
+- Assess trademark risk using the data provided. When conflicts are listed, cite specific marks by name in trademarkNotes — include the mark text and at least one identifying detail (registration number, office, or class). When no conflicts are listed, state that clearly. Do NOT invent marks that are not in the provided conflict data.
+- Use only the trademarkRisk value provided in the data — do not re-bucket it.
 - Copy domain status values exactly as provided — do not alter them.
 - For each TLD marked as "taken" or "likely taken", suggest 2-3 creative alternate domain strings (e.g. getbrandname.com, trybrandname.io). Leave "alternates" as an empty array if no TLD is taken or likely taken.
 - Select the 3 candidates with the best combined trademark safety and domain availability as topPicks. If fewer than 3 candidates are clearly defensible, include only those that are and explain the constraint in "reasoning".
@@ -351,10 +425,25 @@ export async function synthesiseReport(
       const domainLines = Object.entries(v.domains.tlds)
         .map(([tld, status]) => `TLD ${tld}: ${status}`)
         .join('\n')
+      const conflictLines =
+        v.trademark.conflicts.length === 0
+          ? 'Conflicts: none found in queried offices.'
+          : `Conflicts (cite these by name in trademarkNotes if relevant):\n${v.trademark.conflicts
+              .slice(0, 5)
+              .map((c) => {
+                const status = c.isLive ? 'live' : 'dead'
+                const reg = c.registrationNumber ? ` reg #${c.registrationNumber}` : ''
+                return `  - "${c.markText}" (${c.office.toUpperCase()}, ${status}, Class ${c.niceClasses.join('/')},${reg} owner: ${c.ownerName ?? 'unknown'})`
+              })
+              .join('\n')}`
+      const sources =
+        v.trademark.sources.length > 0 ? v.trademark.sources.join(', ') : 'none (search degraded)'
       return `Name: ${v.name}
 Style: ${v.style}
 Rationale: ${v.rationale}
-Trademark (Signa): ${v.trademark.risk} risk — ${v.trademark.notes}
+Trademark risk (precomputed): ${v.trademark.risk}
+Sources queried: ${sources}
+${conflictLines}
 ${domainLines}`
     })
     .join('\n\n---\n\n')
@@ -394,15 +483,24 @@ export async function generateReport(
   const tlds = req.tlds?.length ? req.tlds : ['com', 'io', 'co']
   const reqWithTlds = { ...req, tlds }
   const requestId = opts.requestId ?? randomUUID()
-  const proposals = await generateCandidates(reqWithTlds)
+
+  // Step 1: candidate generation and Nice class inference run in parallel.
+  // Both depend only on the brief, neither depends on the other, and
+  // inference is cheap (~500ms) so the merged latency is dominated by
+  // generateCandidates. inferNiceClass never throws — it falls back to 42.
+  const [proposals, niceClass] = await Promise.all([
+    generateCandidates(reqWithTlds),
+    inferNiceClass(reqWithTlds),
+  ])
+  logger.info({ requestId, niceClass }, 'inferred Nice class for trademark search')
 
   let trademarkMap: Map<string, TrademarkCheckResult> = new Map()
   let domainMap: Map<string, import('./types').DomainAvailability> = new Map()
 
-  // Run trademark (Signa, optionally + EUIPO via LD flag) and domain checks in
-  // parallel — independent I/O, fail open on either
+  // Run trademark (Signa, optionally + EUIPO via LD flag + geography gating)
+  // and domain checks in parallel — independent I/O, fail open on either
   const [trademarkResult, domainResult] = await Promise.allSettled([
-    checkAllTrademarksWithCrossSource(proposals, NICE_CLASS_SOFTWARE, requestId),
+    checkAllTrademarksWithCrossSource(proposals, niceClass, req.geography, requestId),
     checkAllDomains(proposals, tlds),
   ])
 
@@ -437,6 +535,7 @@ export async function generateReport(
       risk: 'uncertain' as const,
       notes: TRADEMARK_UNAVAILABLE_NOTES,
       sources: [],
+      conflicts: [],
     },
     domains: domainMap.get(p.name) ?? {
       tlds: Object.fromEntries(tlds.map((tld) => [tld, 'uncertain' as const])),
