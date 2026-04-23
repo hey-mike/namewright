@@ -1,14 +1,21 @@
 'use client'
+import dynamic from 'next/dynamic'
+import type { ReportData } from '@/lib/types'
 
-export function PdfExportButton() {
+interface Props {
+  report: ReportData
+}
+
+function Placeholder() {
   return (
     <button
-      onClick={() => window.print()}
+      disabled
       className="px-4 py-2 text-sm font-medium rounded inline-flex items-center gap-2"
       style={{
         border: '1px solid var(--color-border)',
         color: 'var(--color-text-1)',
-        transition: 'background 0.12s',
+        opacity: 0.5,
+        cursor: 'default',
       }}
     >
       <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
@@ -20,7 +27,16 @@ export function PdfExportButton() {
           strokeLinejoin="round"
         />
       </svg>
-      Print / Save as PDF
+      Download PDF
     </button>
   )
+}
+
+const PdfDownload = dynamic<Props>(() => import('./ReportPdf'), {
+  ssr: false,
+  loading: Placeholder,
+})
+
+export function PdfExportButton({ report }: Props) {
+  return <PdfDownload report={report} />
 }

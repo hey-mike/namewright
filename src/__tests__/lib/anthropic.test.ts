@@ -36,7 +36,7 @@ const VALID_REPORT: ReportData = {
       rationale: 'Works well',
       trademarkRisk: 'low',
       trademarkNotes: 'No conflicts found',
-      domains: { com: 'likely available', io: 'uncertain', co: 'likely taken', alternates: [] },
+      domains: { tlds: { com: 'available', io: 'uncertain', co: 'likely taken' }, alternates: [] },
     },
   ],
   topPicks: [{ name: 'TestBrand', reasoning: 'Best option', nextSteps: 'Check USPTO' }],
@@ -78,6 +78,29 @@ describe('parseReport', () => {
 
   it('throws on unparseable input', () => {
     expect(() => parseReport('not json at all')).toThrow()
+  })
+
+  it('strips trailing punctuation from candidate names', () => {
+    const dirty = {
+      ...VALID_REPORT,
+      candidates: [{ ...VALID_REPORT.candidates[0], name: 'TestBrand.' }],
+      topPicks: [{ ...VALID_REPORT.topPicks[0], name: 'TestBrand.' }],
+    }
+    expect(parseReport(JSON.stringify(dirty)).candidates[0].name).toBe('TestBrand')
+  })
+
+  it('strips leading dots from TLD keys', () => {
+    const dirty = {
+      ...VALID_REPORT,
+      candidates: [
+        {
+          ...VALID_REPORT.candidates[0],
+          domains: { tlds: { '.com': 'available', '.io': 'taken' }, alternates: [] },
+        },
+      ],
+    }
+    const tlds = parseReport(JSON.stringify(dirty)).candidates[0].domains.tlds
+    expect(Object.keys(tlds)).toEqual(['com', 'io'])
   })
 })
 
@@ -160,9 +183,7 @@ const MOCK_TRADEMARK: TrademarkCheckResult = {
 }
 
 const MOCK_DOMAINS: DomainAvailability = {
-  com: 'likely available',
-  io: 'uncertain',
-  co: 'likely taken',
+  tlds: { com: 'available', io: 'uncertain', co: 'likely taken' },
   alternates: [],
 }
 
@@ -231,7 +252,7 @@ describe('synthesiseReport', () => {
     const callArgs = mockCreate.mock.calls[0][0]
     expect(callArgs.messages[0].content).toContain('Brand0')
     expect(callArgs.messages[0].content).toContain('No conflicts found')
-    expect(callArgs.messages[0].content).toContain('likely available')
+    expect(callArgs.messages[0].content).toContain('TLD com: available')
   })
 
   it('throws when model returns no text block', async () => {
@@ -248,20 +269,43 @@ describe('synthesiseReport', () => {
 
 jest.mock('@/lib/signa', () => ({
   checkAllTrademarks: jest.fn(),
+  TRADEMARK_UNAVAILABLE_NOTES: 'Trademark search unavailable.',
 }))
 jest.mock('@/lib/dns', () => ({
   checkAllDomains: jest.fn(),
 }))
+jest.mock('@/lib/euipo', () => ({
+  checkAllEuipoTrademarks: jest.fn(),
+}))
+jest.mock('@/lib/flags', () => ({
+  isFlagEnabled: jest.fn(),
+}))
 
 import { checkAllTrademarks } from '@/lib/signa'
+import type { TrademarkCheckResult } from '@/lib/signa'
 import { checkAllDomains } from '@/lib/dns'
-import { generateReport } from '@/lib/anthropic'
+import { checkAllEuipoTrademarks } from '@/lib/euipo'
+import { isFlagEnabled } from '@/lib/flags'
+import { generateReport, mergeTrademarkResults } from '@/lib/anthropic'
+
+const mkTrademark = (
+  name: string,
+  risk: TrademarkCheckResult['risk'],
+  source = 'Signa'
+): TrademarkCheckResult => ({
+  candidateName: name,
+  risk,
+  notes: `${source}: ${risk}`,
+  sources: [source],
+})
 
 describe('generateReport orchestrator', () => {
   beforeEach(() => {
     mockCreate = jest.fn()
     ;(checkAllTrademarks as jest.Mock).mockResolvedValue(new Map())
     ;(checkAllDomains as jest.Mock).mockResolvedValue(new Map())
+    ;(checkAllEuipoTrademarks as jest.Mock).mockResolvedValue(new Map())
+    ;(isFlagEnabled as jest.Mock).mockResolvedValue(false)
   })
 
   it('calls generateCandidates then verification then synthesiseReport', async () => {
@@ -278,7 +322,7 @@ describe('generateReport orchestrator', () => {
     })
 
     expect(checkAllTrademarks).toHaveBeenCalledWith(MOCK_PROPOSALS, 42)
-    expect(checkAllDomains).toHaveBeenCalledWith(MOCK_PROPOSALS)
+    expect(checkAllDomains).toHaveBeenCalledWith(MOCK_PROPOSALS, ['com', 'io', 'co'])
     expect(mockCreate).toHaveBeenCalledTimes(2)
     expect(result.candidates).toHaveLength(8)
   })
@@ -297,5 +341,112 @@ describe('generateReport orchestrator', () => {
         geography: 'Global',
       })
     ).rejects.toThrow('Both trademark and domain verification failed')
+  })
+
+  it('skips EUIPO when the LD flag is off', async () => {
+    ;(isFlagEnabled as jest.Mock).mockResolvedValue(false)
+    mockCreate.mockResolvedValueOnce(makeTextResponse(JSON.stringify(MOCK_PROPOSALS)))
+    mockCreate.mockResolvedValueOnce(makeTextResponse(JSON.stringify(MOCK_FULL_REPORT)))
+
+    await generateReport({
+      description: 'A SaaS tool',
+      personality: 'Bold / contrarian',
+      constraints: '',
+      geography: 'Global',
+    })
+
+    expect(checkAllEuipoTrademarks).not.toHaveBeenCalled()
+  })
+
+  it('queries Signa and EUIPO in parallel when the LD flag is on', async () => {
+    ;(isFlagEnabled as jest.Mock).mockResolvedValue(true)
+    ;(checkAllTrademarks as jest.Mock).mockResolvedValue(
+      new Map([['Brand0', mkTrademark('Brand0', 'low', 'Signa')]])
+    )
+    ;(checkAllEuipoTrademarks as jest.Mock).mockResolvedValue(
+      new Map([['Brand0', mkTrademark('Brand0', 'low', 'EUIPO direct')]])
+    )
+    mockCreate.mockResolvedValueOnce(makeTextResponse(JSON.stringify(MOCK_PROPOSALS)))
+    mockCreate.mockResolvedValueOnce(makeTextResponse(JSON.stringify(MOCK_FULL_REPORT)))
+
+    await generateReport(
+      {
+        description: 'A SaaS tool',
+        personality: 'Bold / contrarian',
+        constraints: '',
+        geography: 'Global',
+      },
+      { requestId: 'req-flagon' }
+    )
+
+    expect(checkAllTrademarks).toHaveBeenCalled()
+    expect(checkAllEuipoTrademarks).toHaveBeenCalled()
+    expect(isFlagEnabled).toHaveBeenCalledWith(
+      'euipo-direct-cross-check',
+      expect.objectContaining({ key: 'req-flagon' }),
+      false
+    )
+  })
+})
+
+describe('mergeTrademarkResults', () => {
+  it('returns cross-verified clear when both sources return low', () => {
+    const merged = mergeTrademarkResults(
+      mkTrademark('Acme', 'low', 'Signa'),
+      mkTrademark('Acme', 'low', 'EUIPO direct')
+    )
+
+    expect(merged.risk).toBe('low')
+    expect(merged.notes).toContain('Cross-verified clear')
+    expect(merged.sources).toEqual(['Signa', 'EUIPO direct'])
+  })
+
+  it('takes the worst risk when sources disagree and flags the disagreement', () => {
+    const merged = mergeTrademarkResults(
+      mkTrademark('Acme', 'low', 'Signa'),
+      mkTrademark('Acme', 'high', 'EUIPO direct')
+    )
+
+    expect(merged.risk).toBe('high')
+    expect(merged.notes).toContain('disagree')
+  })
+
+  it('escalates to high when either source flags high', () => {
+    const merged = mergeTrademarkResults(
+      mkTrademark('Acme', 'high', 'Signa'),
+      mkTrademark('Acme', 'low', 'EUIPO direct')
+    )
+
+    expect(merged.risk).toBe('high')
+  })
+
+  it('uses the concrete source when one is uncertain', () => {
+    const uncertain: TrademarkCheckResult = {
+      candidateName: 'Acme',
+      risk: 'uncertain',
+      notes: 'unavailable',
+      sources: [],
+    }
+    const merged = mergeTrademarkResults(uncertain, mkTrademark('Acme', 'moderate', 'EUIPO direct'))
+
+    expect(merged.risk).toBe('moderate')
+    expect(merged.sources).toEqual(['EUIPO direct'])
+    // Should NOT mark this as a disagreement — uncertain isn't a real signal
+    expect(merged.notes).not.toContain('disagree')
+  })
+
+  it('returns uncertain when both sources are uncertain', () => {
+    const uncertain = (n: string): TrademarkCheckResult => ({
+      candidateName: n,
+      risk: 'uncertain',
+      notes: 'unavailable',
+      sources: [],
+    })
+
+    const merged = mergeTrademarkResults(uncertain('Acme'), uncertain('Acme'))
+
+    expect(merged.risk).toBe('uncertain')
+    expect(merged.sources).toEqual([])
+    expect(merged.notes).toContain('both unavailable')
   })
 })

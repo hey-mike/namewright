@@ -1,18 +1,129 @@
+import { randomUUID } from 'crypto'
 import Anthropic from '@anthropic-ai/sdk'
-import { TLDS } from './types'
 import type { ReportData, GenerateRequest, CandidateProposal } from './types'
-import { checkAllTrademarks, TRADEMARK_UNAVAILABLE_NOTES } from './signa'
+import {
+  checkAllTrademarks,
+  TRADEMARK_UNAVAILABLE_NOTES,
+  type TrademarkCheckResult,
+  type TrademarkRisk,
+} from './signa'
+import { checkAllEuipoTrademarks } from './euipo'
 import { checkAllDomains } from './dns'
+import { isFlagEnabled } from './flags'
 import logger from './logger'
 
 const client = new Anthropic()
 
 const VALID_STYLES = new Set(['descriptive', 'invented', 'metaphorical', 'acronym', 'compound'])
 const VALID_RISKS = new Set(['low', 'moderate', 'high', 'uncertain'])
-const VALID_DOMAIN_STATUS = new Set(['likely available', 'likely taken', 'uncertain'])
+const VALID_DOMAIN_STATUS = new Set(['available', 'taken', 'likely taken', 'uncertain'])
 
 // Nice Class 42: computer software and SaaS services
 const NICE_CLASS_SOFTWARE = 42
+
+// LD flag gating the parallel EUIPO direct cross-check on top of Signa.
+const EUIPO_CROSS_CHECK_FLAG = 'euipo-direct-cross-check'
+
+// Risk severity used by the merge function. Higher = more concerning.
+// 'uncertain' sits below 'low' so a concrete result always beats a missing one.
+const RISK_RANK: Record<TrademarkRisk, number> = {
+  uncertain: -1,
+  low: 0,
+  moderate: 1,
+  high: 2,
+}
+
+// Conflict-first merge: if any source flags a real risk, the candidate inherits
+// the worst risk. Both clean → "cross-verified low". Both uncertain → uncertain.
+// Sources that disagree on a concrete result get the worst risk plus a
+// disagreement note so the LLM can surface it to the user.
+export function mergeTrademarkResults(
+  signa: TrademarkCheckResult,
+  euipo: TrademarkCheckResult
+): TrademarkCheckResult {
+  const candidateName = signa.candidateName || euipo.candidateName
+
+  if (signa.risk === 'uncertain' && euipo.risk === 'uncertain') {
+    return {
+      candidateName,
+      risk: 'uncertain',
+      notes: 'Trademark searches across Signa and EUIPO were both unavailable.',
+      sources: [],
+    }
+  }
+
+  const worstRisk: TrademarkRisk =
+    RISK_RANK[signa.risk] >= RISK_RANK[euipo.risk] ? signa.risk : euipo.risk
+
+  const concreteNotes: string[] = []
+  if (signa.sources.length > 0) concreteNotes.push(signa.notes)
+  if (euipo.sources.length > 0) concreteNotes.push(euipo.notes)
+
+  const sources = [...signa.sources, ...euipo.sources]
+  const crossVerifiedClean = signa.risk === 'low' && euipo.risk === 'low'
+  const sourcesDisagree =
+    signa.risk !== 'uncertain' && euipo.risk !== 'uncertain' && signa.risk !== euipo.risk
+
+  let prefix = ''
+  if (crossVerifiedClean) {
+    prefix = 'Cross-verified clear across Signa + EUIPO. '
+  } else if (sourcesDisagree) {
+    prefix = `Sources disagree (Signa: ${signa.risk}, EUIPO: ${euipo.risk}); using worst-case. `
+  }
+
+  return {
+    candidateName,
+    risk: worstRisk,
+    notes: prefix + concreteNotes.join(' '),
+    sources,
+  }
+}
+
+// Build a map of merged trademark results by running Signa and (if the LD flag
+// is on) EUIPO in parallel. Falls back to Signa-only when the flag is off or
+// LD is unreachable.
+async function checkAllTrademarksWithCrossSource(
+  proposals: CandidateProposal[],
+  niceClass: number,
+  requestId: string
+): Promise<Map<string, TrademarkCheckResult>> {
+  const useEuipo = await isFlagEnabled(EUIPO_CROSS_CHECK_FLAG, { key: requestId }, false)
+  if (!useEuipo) {
+    return checkAllTrademarks(proposals, niceClass)
+  }
+
+  const [signaResult, euipoResult] = await Promise.allSettled([
+    checkAllTrademarks(proposals, niceClass),
+    checkAllEuipoTrademarks(proposals, niceClass),
+  ])
+
+  const signaMap =
+    signaResult.status === 'fulfilled' ? signaResult.value : new Map<string, TrademarkCheckResult>()
+  const euipoMap =
+    euipoResult.status === 'fulfilled' ? euipoResult.value : new Map<string, TrademarkCheckResult>()
+
+  if (signaResult.status === 'rejected') {
+    logger.warn({ err: String(signaResult.reason) }, 'Signa batch failed during cross-check')
+  }
+  if (euipoResult.status === 'rejected') {
+    logger.warn({ err: String(euipoResult.reason) }, 'EUIPO batch failed during cross-check')
+  }
+
+  const uncertainFor = (name: string): TrademarkCheckResult => ({
+    candidateName: name,
+    risk: 'uncertain',
+    notes: TRADEMARK_UNAVAILABLE_NOTES,
+    sources: [],
+  })
+
+  return new Map(
+    proposals.map((p) => {
+      const signa = signaMap.get(p.name) ?? uncertainFor(p.name)
+      const euipo = euipoMap.get(p.name) ?? uncertainFor(p.name)
+      return [p.name, mergeTrademarkResults(signa, euipo)]
+    })
+  )
+}
 
 // Extracts text blocks from an Anthropic response; guards against tool-call-only endings
 function extractText(content: Anthropic.Messages.ContentBlock[]): string {
@@ -46,11 +157,19 @@ function rethrowAnthropicError(err: unknown): never {
   throw err
 }
 
+// Strips trailing punctuation/whitespace from LLM-generated names so that
+// `${name}.${tld}` doesn't render as e.g. "quorient..com".
+function normalizeCandidateName(name: string): string {
+  return name.replace(/[.,!?;:\s]+$/, '').trim()
+}
+
 function validateCandidateBase(c: unknown, i: number): void {
   if (!c || typeof c !== 'object') throw new Error(`candidates[${i}] is not an object`)
   const candidate = c as Record<string, unknown>
   if (typeof candidate.name !== 'string' || !candidate.name)
     throw new Error(`candidates[${i}].name missing`)
+  candidate.name = normalizeCandidateName(candidate.name)
+  if (!candidate.name) throw new Error(`candidates[${i}].name empty after normalization`)
   if (!VALID_STYLES.has(candidate.style as string))
     throw new Error(`candidates[${i}].style invalid: ${candidate.style}`)
   if (typeof candidate.rationale !== 'string' || !candidate.rationale)
@@ -76,10 +195,18 @@ function validateReportData(data: unknown): ReportData {
       throw new Error(`candidates[${i}].trademarkNotes missing`)
     const domains = candidate.domains as Record<string, unknown>
     if (!domains || typeof domains !== 'object') throw new Error(`candidates[${i}].domains missing`)
-    for (const tld of TLDS) {
-      if (!VALID_DOMAIN_STATUS.has(domains[tld] as string))
-        throw new Error(`candidates[${i}].domains.${tld} invalid`)
+    const tldMap = domains.tlds as Record<string, unknown>
+    if (!tldMap || typeof tldMap !== 'object')
+      throw new Error(`candidates[${i}].domains.tlds missing`)
+    // The model sometimes returns TLD keys with a leading dot (".com"); strip so
+    // the renderer's `${name}.${tld}` doesn't produce "brieflog..com".
+    const normalizedTlds: Record<string, unknown> = {}
+    for (const [tld, status] of Object.entries(tldMap)) {
+      if (!VALID_DOMAIN_STATUS.has(status as string))
+        throw new Error(`candidates[${i}].domains.tlds.${tld} invalid: ${status}`)
+      normalizedTlds[tld.replace(/^\.+/, '')] = status
     }
+    domains.tlds = normalizedTlds
     if (!Array.isArray(domains.alternates))
       throw new Error(`candidates[${i}].domains.alternates missing`)
   }
@@ -172,7 +299,7 @@ Generate brand name candidates as a JSON array.`
 }
 
 interface VerifiedCandidate extends CandidateProposal {
-  trademark: import('./signa').TrademarkCheckResult
+  trademark: TrademarkCheckResult
   domains: import('./types').DomainAvailability
 }
 
@@ -180,8 +307,8 @@ const SYNTHESISE_REPORT_PROMPT = `You are a brand strategy expert. You have been
 
 # Instructions
 - Assess trademark risk using the data provided — cite specific conflicts found, or explain why risk is low or uncertain.
-- Copy domain status values exactly as provided — do not change "likely available" to "likely taken" or vice versa.
-- For each TLD marked as "likely taken", suggest 2-3 creative alternate domain strings (e.g. getbrandname.com, trybrandname.io). Leave "alternates" as an empty array if no TLD is taken.
+- Copy domain status values exactly as provided — do not alter them.
+- For each TLD marked as "taken" or "likely taken", suggest 2-3 creative alternate domain strings (e.g. getbrandname.com, trybrandname.io). Leave "alternates" as an empty array if no TLD is taken or likely taken.
 - Select the 3 candidates with the best combined trademark safety and domain availability as topPicks. If fewer than 3 candidates are clearly defensible, include only those that are and explain the constraint in "reasoning".
 - Rank the full candidates array from most to least viable. Viability is determined by this priority order: (1) trademark risk — low beats moderate beats uncertain beats high; (2) domain availability — more TLDs available is better; (3) strategic fit with the brand personality.
 - Write actionable nextSteps for each topPick. Scope is limited to trademark and domain actions only — e.g. "File USPTO application in Nice Class 42", "Register acmely.io immediately", "Commission a clearance search before filing". Do not include marketing, product, or business advice.
@@ -190,7 +317,7 @@ const SYNTHESISE_REPORT_PROMPT = `You are a brand strategy expert. You have been
 Respond with ONLY a valid JSON object. No markdown, no preamble.
 Valid values for "style": "descriptive", "invented", "metaphorical", "acronym", "compound".
 Valid values for "trademarkRisk": "low", "moderate", "high", "uncertain".
-Valid values for domain TLDs: "likely available", "likely taken", "uncertain".
+Valid values for domain TLDs: "available", "taken", "likely taken", "uncertain".
 
 {
   "summary": "1-2 sentence recap of what the user is building",
@@ -202,10 +329,10 @@ Valid values for domain TLDs: "likely available", "likely taken", "uncertain".
       "trademarkRisk": "one of the four risk values listed above",
       "trademarkNotes": "1-2 sentences on conflicts found or why risk is low",
       "domains": {
-        "com": "one of the three domain status values listed above",
-        "io": "one of the three domain status values listed above",
-        "co": "one of the three domain status values listed above",
-        "alternates": ["string — only for TLDs that are likely taken"]
+        "tlds": {
+          "<each TLD exactly as provided in the candidate data>": "one of the four domain status values"
+        },
+        "alternates": ["string — only for TLDs that are taken or likely taken"]
       }
     }
   ],
@@ -220,16 +347,16 @@ export async function synthesiseReport(
   verified: VerifiedCandidate[]
 ): Promise<ReportData> {
   const candidateLines = verified
-    .map(
-      (v) =>
-        `Name: ${v.name}
+    .map((v) => {
+      const domainLines = Object.entries(v.domains.tlds)
+        .map(([tld, status]) => `TLD ${tld}: ${status}`)
+        .join('\n')
+      return `Name: ${v.name}
 Style: ${v.style}
 Rationale: ${v.rationale}
 Trademark (Signa): ${v.trademark.risk} risk — ${v.trademark.notes}
-Domain .com: ${v.domains.com}
-Domain .io: ${v.domains.io}
-Domain .co: ${v.domains.co}`
-    )
+${domainLines}`
+    })
     .join('\n\n---\n\n')
 
   const userMessage = `Product: ${req.description}
@@ -260,16 +387,23 @@ Produce the final brand name report as JSON.`
   }
 }
 
-export async function generateReport(req: GenerateRequest): Promise<ReportData> {
-  const proposals = await generateCandidates(req)
+export async function generateReport(
+  req: GenerateRequest,
+  opts: { requestId?: string } = {}
+): Promise<ReportData> {
+  const tlds = req.tlds?.length ? req.tlds : ['com', 'io', 'co']
+  const reqWithTlds = { ...req, tlds }
+  const requestId = opts.requestId ?? randomUUID()
+  const proposals = await generateCandidates(reqWithTlds)
 
-  let trademarkMap: Map<string, import('./signa').TrademarkCheckResult> = new Map()
+  let trademarkMap: Map<string, TrademarkCheckResult> = new Map()
   let domainMap: Map<string, import('./types').DomainAvailability> = new Map()
 
-  // Run trademark and domain checks in parallel — independent I/O, fail open on either
+  // Run trademark (Signa, optionally + EUIPO via LD flag) and domain checks in
+  // parallel — independent I/O, fail open on either
   const [trademarkResult, domainResult] = await Promise.allSettled([
-    checkAllTrademarks(proposals, NICE_CLASS_SOFTWARE),
-    checkAllDomains(proposals),
+    checkAllTrademarksWithCrossSource(proposals, NICE_CLASS_SOFTWARE, requestId),
+    checkAllDomains(proposals, tlds),
   ])
 
   if (trademarkResult.status === 'fulfilled') {
@@ -305,12 +439,10 @@ export async function generateReport(req: GenerateRequest): Promise<ReportData> 
       sources: [],
     },
     domains: domainMap.get(p.name) ?? {
-      com: 'uncertain' as const,
-      io: 'uncertain' as const,
-      co: 'uncertain' as const,
+      tlds: Object.fromEntries(tlds.map((tld) => [tld, 'uncertain' as const])),
       alternates: [],
     },
   }))
 
-  return synthesiseReport(req, verified)
+  return synthesiseReport(reqWithTlds, verified)
 }

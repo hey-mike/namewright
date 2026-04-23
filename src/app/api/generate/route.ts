@@ -5,6 +5,7 @@ import { generateReport } from '@/lib/anthropic'
 import { saveReport } from '@/lib/kv'
 import { validateEnv } from '@/lib/env'
 import logger from '@/lib/logger'
+import { SUPPORTED_TLDS, DEFAULT_TLDS } from '@/lib/types'
 import type { GenerateRequest } from '@/lib/types'
 
 export async function POST(req: Request) {
@@ -48,11 +49,25 @@ export async function POST(req: Request) {
     )
   }
 
+  const tlds = Array.isArray(body.tlds) && body.tlds.length > 0 ? body.tlds : DEFAULT_TLDS
+  if (tlds.length > 5) {
+    return NextResponse.json({ error: 'Maximum 5 domain extensions allowed' }, { status: 400 })
+  }
+  const invalidTld = tlds.find(
+    (t) => !SUPPORTED_TLDS.includes(t as (typeof SUPPORTED_TLDS)[number])
+  )
+  if (invalidTld) {
+    return NextResponse.json(
+      { error: `Unsupported domain extension: .${invalidTld}` },
+      { status: 400 }
+    )
+  }
+
   log.info('report generation started')
 
   let report
   try {
-    report = await generateReport(body as GenerateRequest)
+    report = await generateReport({ ...(body as GenerateRequest), tlds }, { requestId })
   } catch (err) {
     let userError = 'Report generation failed. Please try again.'
     if (err instanceof Anthropic.RateLimitError) {

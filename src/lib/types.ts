@@ -1,8 +1,11 @@
-export const TLDS = ['com', 'io', 'co'] as const
-export type Tld = (typeof TLDS)[number]
-export type DomainStatus = 'likely available' | 'likely taken' | 'uncertain'
+export const SUPPORTED_TLDS = ['com', 'io', 'co', 'net', 'org', 'app', 'dev', 'ai', 'xyz'] as const
+export type SupportedTld = (typeof SUPPORTED_TLDS)[number]
+export const DEFAULT_TLDS: SupportedTld[] = ['com', 'io', 'co']
 
-export interface DomainAvailability extends Record<Tld, DomainStatus> {
+export type DomainStatus = 'available' | 'taken' | 'likely taken' | 'uncertain'
+
+export interface DomainAvailability {
+  tlds: Record<string, DomainStatus>
   alternates: string[]
 }
 
@@ -36,6 +39,7 @@ export interface GenerateRequest {
   personality: string
   constraints?: string
   geography: string
+  tlds: string[]
 }
 
 export interface GenerateResponse {

@@ -20,7 +20,7 @@ const MOCK_REPORT = {
     rationale: 'Good',
     trademarkRisk: 'low',
     trademarkNotes: 'Clear',
-    domains: { com: 'likely available', io: 'uncertain', co: 'likely taken', alternates: [] },
+    domains: { tlds: { com: 'available', io: 'uncertain', co: 'likely taken' }, alternates: [] },
   })),
   topPicks: [
     { name: 'Brand0', reasoning: 'Best', nextSteps: 'Check USPTO' },
