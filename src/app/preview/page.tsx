@@ -5,6 +5,109 @@ import Link from 'next/link'
 import { FreePreview } from '@/components/FreePreview'
 import type { Candidate } from '@/lib/types'
 
+function ErrorPane({ state }: { state: 'no-id' | 'expired' | 'error' }) {
+  if (state === 'no-id') {
+    return (
+      <div>
+        <p
+          className="mono text-[10px] tracking-widest uppercase mb-3"
+          style={{ color: 'var(--color-text-4)' }}
+        >
+          No report in this link
+        </p>
+        <p
+          className="display font-normal leading-snug mb-5"
+          style={{ fontSize: 22, letterSpacing: '-0.015em', color: 'var(--color-text-1)' }}
+        >
+          The link you opened doesn&apos;t include a report ID.
+        </p>
+        <p className="ink-soft mb-6" style={{ fontSize: 14, fontWeight: 300, lineHeight: 1.7 }}>
+          Start a fresh search and we&apos;ll generate one for you.
+        </p>
+        <Link
+          href="/"
+          className="btn-primary px-6 py-3 display text-base font-semibold rounded-md inline-flex items-center gap-2"
+        >
+          Start a new search
+        </Link>
+      </div>
+    )
+  }
+  if (state === 'expired') {
+    return (
+      <div>
+        <p
+          className="mono text-[10px] tracking-widest uppercase mb-3"
+          style={{ color: 'var(--color-text-4)' }}
+        >
+          Browser link expired
+        </p>
+        <p
+          className="display font-normal leading-snug mb-5"
+          style={{ fontSize: 22, letterSpacing: '-0.015em', color: 'var(--color-text-1)' }}
+        >
+          This preview link has expired after 24 hours.
+        </p>
+        <p className="ink-soft mb-3" style={{ fontSize: 14, fontWeight: 300, lineHeight: 1.7 }}>
+          If you opted in to receive a copy by email at checkout, your full report is in your inbox.
+        </p>
+        <p className="ink-soft mb-6" style={{ fontSize: 14, fontWeight: 300, lineHeight: 1.7 }}>
+          Otherwise, you can run a fresh search — same brief, same time, ~30 seconds.
+        </p>
+        <div className="flex flex-wrap gap-3 mb-8">
+          <Link
+            href="/"
+            className="btn-primary px-6 py-3 display text-base font-semibold rounded-md inline-flex items-center gap-2"
+          >
+            Run a new search
+          </Link>
+        </div>
+        <p className="mono ink-softer" style={{ fontSize: 11 }}>
+          Need help recovering a paid report? Email{' '}
+          <a href="mailto:support@namewright.co" style={{ color: 'var(--color-accent)' }}>
+            support@namewright.co
+          </a>{' '}
+          with your purchase email.
+        </p>
+      </div>
+    )
+  }
+  return (
+    <div>
+      <p
+        className="mono text-[10px] tracking-widest uppercase mb-3"
+        style={{ color: 'var(--color-text-4)' }}
+      >
+        Something went wrong
+      </p>
+      <p
+        className="display font-normal leading-snug mb-5"
+        style={{ fontSize: 22, letterSpacing: '-0.015em', color: 'var(--color-text-1)' }}
+      >
+        We couldn&apos;t load this report.
+      </p>
+      <p className="ink-soft mb-6" style={{ fontSize: 14, fontWeight: 300, lineHeight: 1.7 }}>
+        This is usually a temporary network issue. Please refresh the page or try again in a moment.
+      </p>
+      <div className="flex flex-wrap gap-3 mb-8">
+        <Link
+          href="/"
+          className="btn-primary px-6 py-3 display text-base font-semibold rounded-md inline-flex items-center gap-2"
+        >
+          Start a new search
+        </Link>
+      </div>
+      <p className="mono ink-softer" style={{ fontSize: 11 }}>
+        Still stuck? Email{' '}
+        <a href="mailto:support@namewright.co" style={{ color: 'var(--color-accent)' }}>
+          support@namewright.co
+        </a>{' '}
+        and we&apos;ll dig in.
+      </p>
+    </div>
+  )
+}
+
 function PreviewContent() {
   const params = useSearchParams()
   const reportId = params.get('report_id') ?? ''
@@ -15,13 +118,22 @@ function PreviewContent() {
   // loading state instead of flashing the not-found view while the effect
   // fires. Without a reportId there's nothing to load.
   const [loading, setLoading] = useState(!!reportId)
-  const [fetchFailed, setFetchFailed] = useState(false)
+  const [fetchStatus, setFetchStatus] = useState<'idle' | 'expired' | 'error'>('idle')
   const [unlocking, setUnlocking] = useState(false)
   const [unlockError, setUnlockError] = useState<string | null>(null)
 
-  // notFound is derived during render rather than mutated in effect — it's
-  // either obvious from the URL or determinable once loading completes.
-  const notFound = !reportId || fetchFailed || (!loading && candidates.length === 0)
+  // Three distinct error states — each with a different recovery message:
+  //   'no-id'   : URL is missing report_id (typo, stripped link)
+  //   'expired' : reportId looked valid but KV TTL elapsed (the most common
+  //               post-purchase failure — the user paid yesterday and the link
+  //               has aged out)
+  //   'error'   : unexpected fetch failure (network, server, etc.)
+  type ErrorState = 'no-id' | 'expired' | 'error' | null
+  let errorState: ErrorState = null
+  if (!reportId) errorState = 'no-id'
+  else if (!loading && fetchStatus === 'expired') errorState = 'expired'
+  else if (!loading && fetchStatus === 'error') errorState = 'error'
+  else if (!loading && candidates.length === 0) errorState = 'expired'
 
   // sessionStorage is only available client-side; reads must run after mount
   // so the page can server-render without crashing. The eslint disable is
@@ -51,7 +163,11 @@ function PreviewContent() {
     fetch(`/api/preview?report_id=${reportId}`)
       .then((res) => {
         if (res.status === 404) {
-          setFetchFailed(true)
+          setFetchStatus('expired')
+          return null
+        }
+        if (!res.ok) {
+          setFetchStatus('error')
           return null
         }
         return res.json()
@@ -62,7 +178,7 @@ function PreviewContent() {
         setCandidates(data.preview)
         setTotalCount(data.totalCount)
       })
-      .catch(() => setFetchFailed(true))
+      .catch(() => setFetchStatus('error'))
       .finally(() => setLoading(false))
   }, [reportId])
   /* eslint-enable react-hooks/set-state-in-effect */
@@ -95,15 +211,10 @@ function PreviewContent() {
     )
   }
 
-  if (notFound) {
+  if (errorState) {
     return (
-      <main className="max-w-3xl mx-auto px-6 py-20">
-        <p className="ink-soft text-sm">
-          Report not found or expired.{' '}
-          <Link href="/" style={{ color: 'var(--color-accent)' }}>
-            Start over
-          </Link>
-        </p>
+      <main className="max-w-3xl mx-auto px-6 md:px-12 py-20 fade-in">
+        <ErrorPane state={errorState} />
       </main>
     )
   }
@@ -138,7 +249,6 @@ export default function PreviewPage() {
             Namewright
           </span>
         </div>
-        <span className="mono text-[11px] ink-softer">Preview report</span>
       </header>
       <Suspense fallback={<div className="p-20 text-sm ink-soft">Loading…</div>}>
         <PreviewContent />

@@ -71,7 +71,7 @@ export function FreePreview({
           Top 3 candidates
         </p>
         {candidates.map((c, i) => (
-          <CandidateRow key={c.name} c={c} index={i} defaultOpen={i === 0} />
+          <CandidateRow key={c.name} c={c} index={i} defaultOpen={i === 0} previewLocked={i > 0} />
         ))}
       </section>
 
@@ -201,6 +201,16 @@ export function FreePreview({
                 One-time payment · No subscription
               </p>
             )}
+            <p
+              className="mono mt-2 ink-soft max-w-xs mx-auto leading-snug"
+              style={{ fontSize: 11 }}
+            >
+              7-day refund — email{' '}
+              <a href="mailto:support@namewright.co" style={{ color: 'var(--color-accent)' }}>
+                support@namewright.co
+              </a>{' '}
+              if it didn&apos;t help.
+            </p>
             <p className="mono mt-3 ink-softer" style={{ fontSize: 11 }}>
               Domain and trademark data as of{' '}
               {new Date().toLocaleDateString('en-GB', {

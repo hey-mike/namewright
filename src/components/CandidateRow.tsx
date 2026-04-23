@@ -20,10 +20,16 @@ export function CandidateRow({
   c,
   index,
   defaultOpen = false,
+  previewLocked = false,
 }: {
   c: Candidate
   index: number
   defaultOpen?: boolean
+  /** When true (free preview, candidates 2-3), hide trademark notes + alternates
+   * so the paywall promise of "detailed trademark notes" is real. Rationale +
+   * domain status table stay visible — those are the at-a-glance value.
+   */
+  previewLocked?: boolean
 }) {
   const [open, setOpen] = useState(defaultOpen)
 
@@ -89,15 +95,26 @@ export function CandidateRow({
             >
               {c.rationale}
             </p>
-            <p className="mono text-[10px] tracking-widest ink-softer uppercase mb-2">
-              Trademark notes
-            </p>
-            <p
-              className="leading-relaxed ink-soft"
-              style={{ fontSize: 14, fontWeight: 300, lineHeight: 1.75 }}
-            >
-              {c.trademarkNotes}
-            </p>
+            {previewLocked ? (
+              <p
+                className="mono text-[11px] ink-softer leading-relaxed"
+                style={{ fontStyle: 'italic' }}
+              >
+                Detailed trademark notes available in the full report ↓
+              </p>
+            ) : (
+              <>
+                <p className="mono text-[10px] tracking-widest ink-softer uppercase mb-2">
+                  Trademark notes
+                </p>
+                <p
+                  className="leading-relaxed ink-soft"
+                  style={{ fontSize: 14, fontWeight: 300, lineHeight: 1.75 }}
+                >
+                  {c.trademarkNotes}
+                </p>
+              </>
+            )}
           </div>
           <div>
             <p className="mono text-[10px] tracking-widest ink-softer uppercase mb-3">Domains</p>
@@ -124,7 +141,7 @@ export function CandidateRow({
                 contradicted by registration data. Verify with a domain registrar before acting.
               </p>
             )}
-            {c.domains.alternates.length > 0 && (
+            {!previewLocked && c.domains.alternates.length > 0 && (
               <>
                 <p className="mono text-[10px] tracking-widest ink-softer uppercase mb-2">
                   If taken, try

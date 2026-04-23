@@ -25,7 +25,6 @@ export default function HomePage() {
               Namewright
             </span>
           </div>
-          <span className="mono text-[11px] ink-softer">namewright.co</span>
         </div>
       </header>
       <IntakeForm />

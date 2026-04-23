@@ -196,10 +196,7 @@ export function IntakeForm() {
             </p>
           </div>
 
-          <div
-            className="hidden md:block pt-8"
-            style={{ borderTop: '1px solid var(--color-border)' }}
-          >
+          <div className="pt-8" style={{ borderTop: '1px solid var(--color-border)' }}>
             <p
               className="mono text-[10px] tracking-widest uppercase mb-5"
               style={{ color: 'var(--color-text-4)' }}
@@ -233,7 +230,7 @@ export function IntakeForm() {
             </ul>
           </div>
 
-          <div className="hidden md:flex flex-col gap-2 mt-auto">
+          <div className="flex flex-col gap-2 md:mt-auto">
             <p
               className="mono text-[10px] tracking-widest uppercase mb-1"
               style={{ color: 'var(--color-text-4)' }}

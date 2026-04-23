@@ -182,12 +182,19 @@ export function FullReport({ report }: { report: ReportData }) {
       </section>
 
       <section className="mb-6">
-        <p className="text-xs ink-softer leading-relaxed">
+        <p className="text-xs ink-softer leading-relaxed mb-2">
           <strong style={{ color: 'var(--color-text-3)' }}>
             This report expires 24 hours after generation.
           </strong>{' '}
-          Download a copy now — once expired, the link will no longer work and the report cannot be
-          recovered.
+          Download a copy now — once expired, this link will no longer work. If you opted in to
+          receive an email copy at checkout, your full report is in your inbox.
+        </p>
+        <p className="text-xs ink-softer leading-relaxed">
+          Questions about anything in this report? Email{' '}
+          <a href="mailto:support@namewright.co" style={{ color: 'var(--color-accent)' }}>
+            support@namewright.co
+          </a>{' '}
+          and we&apos;ll help.
         </p>
       </section>
 
