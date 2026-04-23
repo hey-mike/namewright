@@ -1,5 +1,5 @@
 import type { Metadata } from 'next'
-import Script from 'next/script'
+import { Analytics } from '@vercel/analytics/next'
 import './globals.css'
 
 export const metadata: Metadata = {
@@ -9,10 +9,6 @@ export const metadata: Metadata = {
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
-  // Plausible — privacy-friendly analytics, no cookie banner needed.
-  // Tag is rendered only when NEXT_PUBLIC_PLAUSIBLE_DOMAIN is set, so dev
-  // and pre-launch deploys are clean.
-  const plausibleDomain = process.env.NEXT_PUBLIC_PLAUSIBLE_DOMAIN
   return (
     <html lang="en">
       <head>
@@ -22,14 +18,6 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           href="https://fonts.googleapis.com/css2?family=Source+Serif+4:ital,opsz,wght@0,8..60,300;0,8..60,400;0,8..60,600;0,8..60,700;1,8..60,300;1,8..60,400;1,8..60,600&family=Lato:wght@300;400;700&family=DM+Mono:wght@400;500&display=swap"
           rel="stylesheet"
         />
-        {plausibleDomain && (
-          <Script
-            defer
-            data-domain={plausibleDomain}
-            src="https://plausible.io/js/script.js"
-            strategy="afterInteractive"
-          />
-        )}
       </head>
       <body
         style={{
@@ -40,6 +28,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         }}
       >
         {children}
+        {/* Vercel Web Analytics — auto-no-ops in dev and on non-Vercel deploys.
+            Activate by enabling Web Analytics in Vercel project settings. */}
+        <Analytics />
       </body>
     </html>
   )
