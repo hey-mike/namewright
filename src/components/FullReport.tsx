@@ -199,7 +199,7 @@ export function FullReport({ report }: { report: ReportData }) {
           <PdfExportButton report={report} />
           <Link
             href="/"
-            className="px-4 py-2 text-sm font-medium rounded inline-flex items-center gap-2"
+            className="px-4 py-2 text-sm font-medium rounded-md inline-flex items-center gap-2"
             style={{
               border: '1px solid var(--color-border)',
               color: 'var(--color-text-1)',

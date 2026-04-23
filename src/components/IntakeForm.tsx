@@ -279,7 +279,7 @@ export function IntakeForm() {
                 onChange={(e) => setForm({ ...form, description: e.target.value })}
                 placeholder="Product category, core function, who it's for. A sentence or two."
                 rows={3}
-                className="w-full p-3 text-sm rounded"
+                className="w-full p-3 text-sm rounded-md"
                 style={{ ...inputBase, resize: 'none', lineHeight: 1.6 }}
                 onFocus={onFocus}
                 onBlur={onBlur}
@@ -305,7 +305,7 @@ export function IntakeForm() {
                     key={p}
                     type="button"
                     onClick={() => setForm({ ...form, personality: p })}
-                    className={`chip px-4 py-2 text-xs font-medium rounded-full border ${form.personality === p ? 'chip-active' : ''}`}
+                    className={`chip px-4 py-2 text-xs font-medium rounded-md border ${form.personality === p ? 'chip-active' : ''}`}
                     style={
                       form.personality !== p
                         ? {
@@ -340,7 +340,7 @@ export function IntakeForm() {
                 value={form.constraints}
                 onChange={(e) => setForm({ ...form, constraints: e.target.value })}
                 placeholder="e.g. Under 8 characters. Must be pronounceable in Mandarin."
-                className="w-full p-3 text-sm rounded"
+                className="w-full p-3 text-sm rounded-md"
                 style={inputBase}
                 onFocus={onFocus}
                 onBlur={onBlur}
@@ -363,7 +363,7 @@ export function IntakeForm() {
                     key={g}
                     type="button"
                     onClick={() => setForm({ ...form, geography: g })}
-                    className={`chip px-4 py-2 text-xs font-medium rounded-full border ${form.geography === g ? 'chip-active' : ''}`}
+                    className={`chip px-4 py-2 text-xs font-medium rounded-md border ${form.geography === g ? 'chip-active' : ''}`}
                     style={
                       form.geography !== g
                         ? {
@@ -408,7 +408,7 @@ export function IntakeForm() {
                           setForm({ ...form, tlds: [...form.tlds, tld] })
                         }
                       }}
-                      className={`chip px-3 py-1.5 text-xs font-medium rounded-full border mono ${selected ? 'chip-active' : ''}`}
+                      className={`chip px-3 py-1.5 text-xs font-medium rounded-md border mono ${selected ? 'chip-active' : ''}`}
                       style={
                         !selected
                           ? {
@@ -437,7 +437,7 @@ export function IntakeForm() {
               <button
                 onClick={handleSubmit}
                 disabled={!canSubmit}
-                className="btn-primary px-6 py-3 display text-base font-semibold rounded inline-flex items-center gap-2"
+                className="btn-primary px-6 py-3 display text-base font-semibold rounded-md inline-flex items-center gap-2"
               >
                 Search registries
                 <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
