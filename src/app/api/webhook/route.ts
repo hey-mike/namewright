@@ -3,6 +3,8 @@ import type Stripe from 'stripe'
 import stripe from '@/lib/stripe'
 import { validateEnv } from '@/lib/env'
 import { notifySlack } from '@/lib/alerts'
+import { getReport } from '@/lib/kv'
+import { sendReportEmail } from '@/lib/email'
 import logger from '@/lib/logger'
 
 export async function POST(req: Request) {
@@ -46,6 +48,39 @@ export async function POST(req: Request) {
         details: { sessionId: session.id, customerEmail: session.customer_email },
       })
       return NextResponse.json({ received: true })
+    }
+
+    // Send the email-me-a-copy if the user opted in at the paywall. Empty
+    // string in metadata = explicit opt-out (no email entered). Failures
+    // here must NOT 5xx the webhook — Stripe will retry which would queue
+    // duplicate sends. Log + Slack-alert and acknowledge instead.
+    const reportEmail = session.metadata?.reportEmail
+    if (reportEmail) {
+      const report = await getReport(reportId)
+      if (!report) {
+        logger.warn(
+          { route: 'webhook', reportId, sessionId: session.id },
+          'Report not found in KV when sending email — likely TTL race or write failure'
+        )
+        await notifySlack({
+          severity: 'critical',
+          title: 'Email opt-in failed: report missing from KV',
+          details: { reportId, sessionId: session.id, reportEmail },
+        })
+      } else {
+        const result = await sendReportEmail({ to: reportEmail, reportId, report })
+        if (!result.ok) {
+          logger.warn(
+            { route: 'webhook', reportId, reason: result.reason },
+            'Report email send failed'
+          )
+          await notifySlack({
+            severity: 'warning',
+            title: 'Report email send failed',
+            details: { reportId, sessionId: session.id, reason: result.reason },
+          })
+        }
+      }
     }
   }
 

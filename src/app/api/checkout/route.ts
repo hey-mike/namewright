@@ -4,14 +4,21 @@ import stripe from '@/lib/stripe'
 import { validateEnv } from '@/lib/env'
 import logger from '@/lib/logger'
 
+// Light server-side email check. Stripe's own validation runs again at
+// checkout time; we just want to reject obvious garbage before storing it
+// in session metadata.
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+
 export async function POST(req: Request) {
   validateEnv()
-  let reportId: unknown
+  let body: { reportId?: unknown; reportEmail?: unknown }
   try {
-    ;({ reportId } = await req.json())
+    body = await req.json()
   } catch {
     return NextResponse.json({ error: 'Invalid request body' }, { status: 400 })
   }
+  const reportId = body.reportId
+  const rawEmail = body.reportEmail
 
   if (!reportId) {
     return NextResponse.json({ error: 'reportId is required' }, { status: 400 })
@@ -22,7 +29,22 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Invalid reportId' }, { status: 400 })
   }
 
+  // Email is optional. Reject any non-string/non-null value so we don't put
+  // arbitrary data into metadata. Empty/null = no email send on payment.
+  let reportEmail: string | null = null
+  if (rawEmail !== undefined && rawEmail !== null && rawEmail !== '') {
+    if (typeof rawEmail !== 'string' || rawEmail.length > 254 || !EMAIL_RE.test(rawEmail.trim())) {
+      return NextResponse.json({ error: 'Invalid email' }, { status: 400 })
+    }
+    reportEmail = rawEmail.trim().toLowerCase()
+  }
+
   const appUrl = process.env.NEXT_PUBLIC_APP_URL
+
+  // Stripe metadata values must be strings. Use empty string as the absent
+  // sentinel so the webhook can detect "no email requested" without an extra
+  // shape variant.
+  const metadata: Record<string, string> = { reportId, reportEmail: reportEmail ?? '' }
 
   let session
   try {
@@ -42,7 +64,9 @@ export async function POST(req: Request) {
           quantity: 1,
         },
       ],
-      metadata: { reportId },
+      metadata,
+      // Pre-fill Stripe's own email field so the user doesn't retype.
+      ...(reportEmail ? { customer_email: reportEmail } : {}),
       success_url: `${appUrl}/api/auth?report_id=${reportId}&session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${appUrl}/preview?report_id=${reportId}`,
     })

@@ -1,4 +1,5 @@
 'use client'
+import { useState } from 'react'
 import type { Candidate } from '@/lib/types'
 import { CandidateRow } from './CandidateRow'
 
@@ -6,10 +7,16 @@ interface FreePreviewProps {
   summary: string
   candidates: Candidate[]
   totalCount: number
-  onUnlock: () => void
+  onUnlock: (email: string | null) => void
   unlocking: boolean
   unlockError?: string | null
 }
+
+// Loose client-side validation. The webhook re-validates server-side before
+// attempting to send anything, so this is purely to give immediate UI feedback.
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+
+const EASING = 'cubic-bezier(0.16, 1, 0.3, 1)'
 
 export function FreePreview({
   summary,
@@ -20,6 +27,24 @@ export function FreePreview({
   unlockError,
 }: FreePreviewProps) {
   const hiddenCount = totalCount - candidates.length
+  const [email, setEmail] = useState('')
+  const [emailTouched, setEmailTouched] = useState(false)
+  const trimmedEmail = email.trim()
+  const emailValid = trimmedEmail === '' || EMAIL_RE.test(trimmedEmail)
+
+  function handleUnlock() {
+    onUnlock(trimmedEmail === '' ? null : trimmedEmail)
+  }
+
+  function inputFocus(e: React.FocusEvent<HTMLInputElement>) {
+    e.target.style.borderColor = 'var(--color-accent)'
+    e.target.style.boxShadow = '0 0 0 3px var(--color-focus-ring)'
+  }
+  function inputBlur(e: React.FocusEvent<HTMLInputElement>) {
+    e.target.style.borderColor = emailValid ? 'var(--color-border-mid)' : 'var(--color-error)'
+    e.target.style.boxShadow = 'none'
+    setEmailTouched(true)
+  }
 
   return (
     <main className="max-w-3xl mx-auto px-6 md:px-12 py-10 fade-in">
@@ -118,16 +143,56 @@ export function FreePreview({
               Full report includes top 3 picks with next steps, detailed trademark notes, and all
               domain alternatives.
             </p>
+
+            <div className="max-w-xs mx-auto mb-5 text-left">
+              <label
+                htmlFor="report-email"
+                className="mono ink-softer block mb-1.5"
+                style={{ fontSize: 10, letterSpacing: '0.18em', textTransform: 'uppercase' }}
+              >
+                Email me a copy{' '}
+                <span style={{ textTransform: 'none', letterSpacing: 0 }} className="ink-soft">
+                  · recommended
+                </span>
+              </label>
+              <input
+                id="report-email"
+                type="email"
+                inputMode="email"
+                autoComplete="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                onFocus={inputFocus}
+                onBlur={inputBlur}
+                placeholder="you@example.com"
+                aria-invalid={emailTouched && !emailValid}
+                className="w-full px-3 py-2 text-sm rounded-md"
+                style={{
+                  fontFamily: 'inherit',
+                  color: 'var(--color-text-2)',
+                  background: 'var(--color-input-bg)',
+                  border: `1px solid ${emailTouched && !emailValid ? 'var(--color-error)' : 'var(--color-border-mid)'}`,
+                  outline: 'none',
+                  transition: `border-color 0.2s ${EASING}, box-shadow 0.2s ${EASING}`,
+                }}
+              />
+              <p className="mono ink-softer mt-1.5 leading-snug" style={{ fontSize: 11 }}>
+                {emailTouched && !emailValid
+                  ? 'Enter a valid email or leave blank.'
+                  : 'Keeps your report past the 24-hour browser link.'}
+              </p>
+            </div>
+
             <button
-              onClick={onUnlock}
-              disabled={unlocking}
-              className="btn-primary px-6 py-3 display text-base font-semibold rounded inline-flex items-center gap-2"
+              onClick={handleUnlock}
+              disabled={unlocking || (emailTouched && !emailValid)}
+              className="btn-primary px-6 py-3 display text-base font-semibold rounded-md inline-flex items-center gap-2"
             >
               {unlocking ? 'Redirecting…' : 'Unlock full report'}
               <span className="font-normal opacity-70">$19</span>
             </button>
             {unlockError && (
-              <p className="mono text-xs mt-3" style={{ color: 'oklch(0.480 0.170 22)' }}>
+              <p className="mono text-xs mt-3" style={{ color: 'var(--color-error)' }}>
                 {unlockError}
               </p>
             )}
@@ -136,9 +201,6 @@ export function FreePreview({
                 One-time payment · No subscription
               </p>
             )}
-            <p className="mono mt-2 ink-softer" style={{ fontSize: 11 }}>
-              Report accessible for 24 hours · download to keep
-            </p>
             <p className="mono mt-3 ink-softer" style={{ fontSize: 11 }}>
               Domain and trademark data as of{' '}
               {new Date().toLocaleDateString('en-GB', {

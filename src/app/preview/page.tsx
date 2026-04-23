@@ -67,14 +67,14 @@ function PreviewContent() {
   }, [reportId])
   /* eslint-enable react-hooks/set-state-in-effect */
 
-  async function handleUnlock() {
+  async function handleUnlock(reportEmail: string | null) {
     setUnlocking(true)
     setUnlockError(null)
     try {
       const res = await fetch('/api/checkout', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ reportId }),
+        body: JSON.stringify({ reportId, reportEmail }),
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error ?? `Server error ${res.status}`)
