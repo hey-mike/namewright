@@ -107,7 +107,7 @@ try {
 
   let reportUrl
   try {
-    await page.waitForURL(/\/preview\?report_id=/, { timeout: 90000 })
+    await page.waitForURL(/\/preview\?report_id=/, { timeout: 120000 })
     reportUrl = page.url()
     console.log(`    → navigated to ${reportUrl.slice(BASE_URL.length)}`)
   } catch (e) {

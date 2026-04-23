@@ -1,6 +1,14 @@
-import Signa, { type SearchV2Result } from '@signa-so/sdk'
 import { officesForGeography } from './geography'
 import logger from './logger'
+
+// Signa SDK (@signa-so/sdk v0.2.2) doesn't expose the `q` param on
+// TrademarkListParams yet, and its search.query() calls a now-sunsetted
+// endpoint (HTTP 410). Calling POST /v1/trademarks directly with fetch
+// until the SDK catches up. The SDK's Authorization header pattern
+// (`Bearer <api_key>`) is preserved.
+
+const SIGNA_BASE_URL = 'https://api.signa.so'
+const REQUEST_TIMEOUT_MS = 10_000
 
 export type TrademarkRisk = 'low' | 'moderate' | 'high' | 'uncertain'
 
@@ -27,21 +35,35 @@ export interface TrademarkCheckResult {
   conflicts: TrademarkConflict[]
 }
 
-let _signa: Signa | null = null
-function getSigna(): Signa {
-  const key = process.env.SIGNA_API_KEY
-  if (!key) throw new Error('SIGNA_API_KEY is not set')
-  if (!_signa) _signa = new Signa({ api_key: key })
-  return _signa
-}
-
 export const TRADEMARK_UNAVAILABLE_NOTES =
   'Trademark search unavailable. Manual verification recommended.'
+
+// Shape of a single hit from POST /v1/trademarks. Mirrors what the live API
+// returns (probed 2026-04-23) — intentionally narrower than the full Signa
+// schema since we only consume these fields.
+interface SignaSearchResult {
+  id: string
+  mark_text: string | null
+  status: { primary: string; stage: string } | null
+  office_code: string
+  jurisdiction_code: string
+  filing_date: string | null
+  registration_number: string | null
+  owner_name: string | null
+  classifications: Array<{ nice_class: number; goods_services_text: string | null }>
+  relevance_score: number
+}
+
+interface SignaSearchResponse {
+  object: 'list'
+  data: SignaSearchResult[]
+  has_more: boolean
+}
 
 // Severity buckets a single live result. Signa's relevance_score is calibrated
 // 0-100 — empirically anything ≥80 is a near-collision, 50-80 is a meaningful
 // signal worth flagging, below 50 is noise.
-function bucketResult(r: SearchV2Result): TrademarkRisk {
+function bucketResult(r: SignaSearchResult): TrademarkRisk {
   if (r.status?.primary !== 'active') return 'uncertain' // dead marks don't drive risk
   if (r.relevance_score >= 80) return 'high'
   if (r.relevance_score >= 50) return 'moderate'
@@ -56,7 +78,7 @@ const RISK_RANK: Record<TrademarkRisk, number> = {
 }
 
 // Worst-wins across live results. Dead marks contribute nothing to risk.
-export function scoreFromResults(results: SearchV2Result[]): TrademarkRisk {
+export function scoreFromResults(results: SignaSearchResult[]): TrademarkRisk {
   const liveBuckets = results.filter((r) => r.status?.primary === 'active').map(bucketResult)
   if (liveBuckets.length === 0) return 'low'
   return liveBuckets.reduce<TrademarkRisk>(
@@ -65,16 +87,13 @@ export function scoreFromResults(results: SearchV2Result[]): TrademarkRisk {
   )
 }
 
-function toConflict(r: SearchV2Result): TrademarkConflict {
-  // SearchV2Result is the lightweight search hit shape — registration_number
-  // and other detail fields require a follow-up trademarks.retrieve(id) call.
-  // For now we surface what the search returns; deepening per-hit details is
-  // a future enhancement gated on cost (extra API call per conflict).
+function toConflict(r: SignaSearchResult): TrademarkConflict {
   return {
     markText: r.mark_text ?? '?',
     office: r.office_code,
     jurisdiction: r.jurisdiction_code,
-    niceClasses: r.nice_classes,
+    niceClasses: (r.classifications ?? []).map((c) => c.nice_class),
+    registrationNumber: r.registration_number ?? undefined,
     filingDate: r.filing_date ?? undefined,
     ownerName: r.owner_name ?? undefined,
     isLive: r.status?.primary === 'active',
@@ -90,11 +109,48 @@ function buildNotes(candidateName: string, conflicts: TrademarkConflict[]): stri
   const cited = live.slice(0, 3).map((c) => {
     const parts = [c.markText]
     if (c.registrationNumber) parts.push(`#${c.registrationNumber}`)
-    parts.push(`Class ${c.niceClasses.join('/')}`, c.office.toUpperCase())
+    const classes = c.niceClasses.join('/')
+    if (classes) parts.push(`Class ${classes}`)
+    parts.push(c.office.toUpperCase())
     return parts.join(', ')
   })
   const overflow = live.length > 3 ? ` (+${live.length - 3} more)` : ''
   return `Active conflicts: ${cited.join('; ')}${overflow}.`
+}
+
+async function searchSignaTrademarks(
+  apiKey: string,
+  query: string,
+  niceClass: number,
+  offices: string[]
+): Promise<SignaSearchResponse> {
+  const res = await fetch(`${SIGNA_BASE_URL}/v1/trademarks`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+      Accept: 'application/json',
+    },
+    body: JSON.stringify({
+      query,
+      strategies: ['exact', 'phonetic', 'fuzzy'],
+      filters: {
+        offices,
+        nice_classes: [niceClass],
+      },
+      limit: 10,
+    }),
+    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+  })
+
+  if (!res.ok) {
+    const bodyText = await res.text().catch(() => '')
+    throw new Error(
+      `Signa search failed: ${res.status} ${res.statusText} — ${bodyText.slice(0, 200)}`
+    )
+  }
+
+  return (await res.json()) as SignaSearchResponse
 }
 
 export async function checkTrademark(
@@ -102,21 +158,22 @@ export async function checkTrademark(
   niceClass: number,
   geography: string
 ): Promise<TrademarkCheckResult> {
+  const apiKey = process.env.SIGNA_API_KEY
+  if (!apiKey) {
+    logger.warn({ candidateName }, 'SIGNA_API_KEY not set — trademark search skipped')
+    return {
+      candidateName,
+      risk: 'uncertain',
+      notes: TRADEMARK_UNAVAILABLE_NOTES,
+      sources: [],
+      conflicts: [],
+    }
+  }
+
   const offices = officesForGeography(geography)
   try {
-    // search.query() calls POST /v1/trademarks/search (deprecated, sunset 2026-10-01).
-    // Migrate to signa.trademarks.list({ q }) once the SDK exposes `q` in TrademarkListParams.
-    const results = await getSigna().search.query({
-      query: candidateName,
-      strategies: ['exact', 'phonetic', 'fuzzy'],
-      filters: {
-        offices,
-        nice_classes: [niceClass],
-      },
-      limit: 10,
-    })
-
-    const data = results.data ?? []
+    const response = await searchSignaTrademarks(apiKey, candidateName, niceClass, offices)
+    const data = response.data ?? []
     const conflicts = data.map(toConflict)
     const risk = scoreFromResults(data)
 

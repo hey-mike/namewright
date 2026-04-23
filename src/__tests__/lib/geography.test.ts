@@ -5,14 +5,17 @@ describe('officesForGeography', () => {
     expect(officesForGeography('US-first')).toEqual(['uspto'])
   })
 
-  it('returns the broadest set for Global', () => {
-    expect(officesForGeography('Global')).toContain('uspto')
-    expect(officesForGeography('Global')).toContain('euipo')
-    expect(officesForGeography('Global')).toContain('cnipa')
+  it('returns USPTO + EUIPO + WIPO for Global (Signa-supported set)', () => {
+    expect(officesForGeography('Global')).toEqual(['uspto', 'euipo', 'wipo'])
   })
 
-  it('routes Europe to EUIPO and UKIPO', () => {
-    expect(officesForGeography('Europe')).toEqual(['euipo', 'ukipo'])
+  it('routes Europe to EUIPO only (UKIPO not yet supported by Signa)', () => {
+    expect(officesForGeography('Europe')).toEqual(['euipo'])
+  })
+
+  it('routes APAC and Asia regions to WIPO + USPTO (Madrid proxy)', () => {
+    expect(officesForGeography('Australia / APAC')).toEqual(['wipo', 'uspto'])
+    expect(officesForGeography('China / Asia')).toEqual(['wipo', 'uspto'])
   })
 
   it('falls back to the global sweep for an unknown geography string', () => {
