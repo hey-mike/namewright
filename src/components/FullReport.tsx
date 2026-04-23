@@ -64,16 +64,27 @@ export function FullReport({ report }: { report: ReportData }) {
                 </span>
                 <div className="flex-1 min-w-0">
                   <h3
-                    className="display text-2xl font-bold mb-2"
-                    style={{ letterSpacing: '-0.025em', color: 'var(--color-text-1)' }}
+                    className="display text-2xl mb-2"
+                    style={{
+                      letterSpacing: '-0.025em',
+                      color: 'var(--color-text-1)',
+                      fontWeight: 700,
+                    }}
                   >
                     {pick.name}
                   </h3>
-                  <p className="text-sm ink-soft leading-relaxed mb-3">{pick.reasoning}</p>
+                  <p
+                    className="ink-soft leading-relaxed mb-3"
+                    style={{ fontSize: 14, fontWeight: 300 }}
+                  >
+                    {pick.reasoning}
+                  </p>
                   <p className="mono text-[10px] tracking-widest uppercase mb-1 ink-softer">
                     Next steps
                   </p>
-                  <p className="text-sm ink-soft leading-relaxed">{pick.nextSteps}</p>
+                  <p className="ink-soft leading-relaxed" style={{ fontSize: 14, fontWeight: 300 }}>
+                    {pick.nextSteps}
+                  </p>
                 </div>
               </div>
             ))}
@@ -108,8 +119,8 @@ export function FullReport({ report }: { report: ReportData }) {
             Recommendation
           </p>
           <p
-            className="display text-lg font-medium leading-snug"
-            style={{ color: 'var(--color-text-1)', letterSpacing: '-0.02em' }}
+            className="display text-xl font-normal leading-snug"
+            style={{ color: 'var(--color-text-1)', letterSpacing: '-0.015em' }}
           >
             {report.recommendation}
           </p>
@@ -185,7 +196,7 @@ export function FullReport({ report }: { report: ReportData }) {
         style={{ borderTop: '1px solid var(--color-border)' }}
       >
         <div className="flex gap-3">
-          <PdfExportButton />
+          <PdfExportButton report={report} />
           <Link
             href="/"
             className="px-4 py-2 text-sm font-medium rounded inline-flex items-center gap-2"

@@ -1,6 +1,7 @@
 'use client'
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
+import { SUPPORTED_TLDS, DEFAULT_TLDS } from '@/lib/types'
 
 const PERSONALITIES = [
   'Serious / technical',
@@ -18,12 +19,14 @@ const PIPELINE_STEPS = [
   'Synthesising report',
 ]
 
-const DELIVERABLES = [
-  '8–12 ranked name candidates',
-  'Trademark risk per candidate',
-  'Domain availability (.com .io .co)',
-  'Top 3 picks with next steps',
-]
+function deliverables(tlds: string[]) {
+  return [
+    '8–12 ranked name candidates',
+    'Trademark risk per candidate',
+    `Domain availability (${tlds.map((t) => `.${t}`).join(' ')})`,
+    'Top 3 picks with next steps',
+  ]
+}
 
 const EASING = 'cubic-bezier(0.16, 1, 0.3, 1)'
 
@@ -34,6 +37,7 @@ export function IntakeForm() {
     personality: '',
     constraints: '',
     geography: '',
+    tlds: DEFAULT_TLDS as string[],
   })
   const [loading, setLoading] = useState(false)
   const [loadingStep, setLoadingStep] = useState(0)
@@ -168,17 +172,20 @@ export function IntakeForm() {
         >
           <div>
             <h1
-              className="display font-bold mb-5"
+              className="display font-light mb-5"
               style={{
                 fontSize: 'clamp(1.9rem, 3.6vw, 2.9rem)',
-                letterSpacing: '-0.03em',
+                letterSpacing: '-0.025em',
                 color: 'var(--color-text-1)',
-                lineHeight: 1.06,
+                lineHeight: 1.08,
               }}
             >
-              Name your brand
+              Name your brand{' '}
+              <em style={{ fontStyle: 'italic', fontWeight: 600, color: 'var(--color-accent)' }}>
+                well.
+              </em>
               <br />
-              defensibly.
+              Own it defensibly.
             </h1>
             <p
               className="text-sm leading-relaxed"
@@ -200,7 +207,7 @@ export function IntakeForm() {
               Each report includes
             </p>
             <ul className="space-y-3.5">
-              {DELIVERABLES.map((item) => (
+              {deliverables(form.tlds).map((item) => (
                 <li key={item} className="flex items-start gap-3">
                   <svg
                     width="11"
@@ -298,7 +305,7 @@ export function IntakeForm() {
                     key={p}
                     type="button"
                     onClick={() => setForm({ ...form, personality: p })}
-                    className={`chip px-4 py-2 text-xs font-medium rounded border ${form.personality === p ? 'chip-active' : ''}`}
+                    className={`chip px-4 py-2 text-xs font-medium rounded-full border ${form.personality === p ? 'chip-active' : ''}`}
                     style={
                       form.personality !== p
                         ? {
@@ -356,7 +363,7 @@ export function IntakeForm() {
                     key={g}
                     type="button"
                     onClick={() => setForm({ ...form, geography: g })}
-                    className={`chip px-4 py-2 text-xs font-medium rounded border ${form.geography === g ? 'chip-active' : ''}`}
+                    className={`chip px-4 py-2 text-xs font-medium rounded-full border ${form.geography === g ? 'chip-active' : ''}`}
                     style={
                       form.geography !== g
                         ? {
@@ -371,6 +378,52 @@ export function IntakeForm() {
                     {g}
                   </button>
                 ))}
+              </div>
+            </div>
+
+            <div>
+              <div className="flex items-baseline gap-3 mb-3">
+                <span className="mono text-xs ink-softer tabular-nums">05</span>
+                <span
+                  className="text-sm font-semibold"
+                  style={{ color: 'var(--color-text-1)', letterSpacing: '-0.01em' }}
+                >
+                  Domain extensions{' '}
+                  <span className="font-normal ink-softer text-xs">(up to 5)</span>
+                </span>
+              </div>
+              <div className="flex flex-wrap gap-2" role="group" aria-label="Domain extensions">
+                {SUPPORTED_TLDS.map((tld) => {
+                  const selected = form.tlds.includes(tld)
+                  return (
+                    <button
+                      key={tld}
+                      type="button"
+                      onClick={() => {
+                        if (selected) {
+                          if (form.tlds.length === 1) return
+                          setForm({ ...form, tlds: form.tlds.filter((t) => t !== tld) })
+                        } else {
+                          if (form.tlds.length >= 5) return
+                          setForm({ ...form, tlds: [...form.tlds, tld] })
+                        }
+                      }}
+                      className={`chip px-3 py-1.5 text-xs font-medium rounded-full border mono ${selected ? 'chip-active' : ''}`}
+                      style={
+                        !selected
+                          ? {
+                              borderColor: 'var(--color-border-mid)',
+                              color: 'var(--color-text-2)',
+                              background: 'var(--color-input-bg)',
+                            }
+                          : {}
+                      }
+                      aria-pressed={selected}
+                    >
+                      .{tld}
+                    </button>
+                  )
+                })}
               </div>
             </div>
 

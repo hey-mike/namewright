@@ -31,8 +31,8 @@ export function FreePreview({
           Brief
         </p>
         <p
-          className="display text-xl md:text-2xl font-medium leading-snug"
-          style={{ letterSpacing: '-0.02em', color: 'var(--color-text-1)' }}
+          className="display font-normal leading-snug"
+          style={{ fontSize: 26, letterSpacing: '-0.015em', color: 'var(--color-text-1)' }}
         >
           {summary}
         </p>
@@ -74,37 +74,47 @@ export function FreePreview({
           style={{ background: 'linear-gradient(to bottom, transparent, var(--color-bg) 50%)' }}
         >
           <div className="text-center py-10">
-            <svg
+            <div
               className="mx-auto mb-4"
-              width="24"
-              height="24"
-              viewBox="0 0 24 24"
-              fill="none"
+              style={{
+                width: 44,
+                height: 44,
+                borderRadius: '50%',
+                border: '1px solid var(--color-border-mid)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
               aria-hidden="true"
             >
-              <rect
-                x="5"
-                y="11"
-                width="14"
-                height="10"
-                rx="2"
-                stroke="var(--color-text-4)"
-                strokeWidth="1.5"
-              />
-              <path
-                d="M8 11V7a4 4 0 0 1 8 0v4"
-                stroke="var(--color-text-4)"
-                strokeWidth="1.5"
-                strokeLinecap="round"
-              />
-            </svg>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+                <rect
+                  x="5"
+                  y="11"
+                  width="14"
+                  height="10"
+                  rx="2"
+                  stroke="var(--color-text-4)"
+                  strokeWidth="1.5"
+                />
+                <path
+                  d="M8 11V7a4 4 0 0 1 8 0v4"
+                  stroke="var(--color-text-4)"
+                  strokeWidth="1.5"
+                  strokeLinecap="round"
+                />
+              </svg>
+            </div>
             <p
               className="display text-2xl font-semibold mb-2"
               style={{ color: 'var(--color-text-1)', letterSpacing: '-0.02em' }}
             >
               {hiddenCount} more candidates
             </p>
-            <p className="text-sm ink-soft mb-6 max-w-xs mx-auto leading-relaxed">
+            <p
+              className="ink-soft mb-6 max-w-xs mx-auto leading-relaxed"
+              style={{ fontSize: 14, fontWeight: 300 }}
+            >
               Full report includes top 3 picks with next steps, detailed trademark notes, and all
               domain alternatives.
             </p>
@@ -122,10 +132,21 @@ export function FreePreview({
               </p>
             )}
             {!unlockError && (
-              <p className="mono text-[11px] mt-3 ink-softer">One-time payment · No subscription</p>
+              <p className="mono mt-3 ink-softer" style={{ fontSize: 11 }}>
+                One-time payment · No subscription
+              </p>
             )}
-            <p className="mono text-[11px] mt-2 ink-softer">
+            <p className="mono mt-2 ink-softer" style={{ fontSize: 11 }}>
               Report accessible for 24 hours · download to keep
+            </p>
+            <p className="mono mt-3 ink-softer" style={{ fontSize: 11 }}>
+              Domain and trademark data as of{' '}
+              {new Date().toLocaleDateString('en-GB', {
+                year: 'numeric',
+                month: 'short',
+                day: 'numeric',
+              })}
+              . Not legal advice.
             </p>
           </div>
         </div>

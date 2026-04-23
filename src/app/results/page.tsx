@@ -36,8 +36,8 @@ export default async function ResultsPage({ searchParams }: Props) {
             style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--color-accent)' }}
           />
           <span
-            className="display text-sm font-bold"
-            style={{ letterSpacing: '-0.02em', color: 'var(--color-text-1)' }}
+            className="display text-sm font-semibold"
+            style={{ letterSpacing: '-0.01em', color: 'var(--color-text-1)', fontStyle: 'italic' }}
           >
             Namewright
           </span>

@@ -10,7 +10,8 @@ const RISK_COLORS: Record<Candidate['trademarkRisk'], string> = {
 }
 
 function domainStatus(s: string) {
-  if (s === 'likely available') return { label: 'likely free', color: 'var(--color-success)' }
+  if (s === 'available') return { label: 'available', color: 'var(--color-success)' }
+  if (s === 'taken') return { label: 'taken', color: 'var(--color-error)' }
   if (s === 'likely taken') return { label: 'likely taken', color: 'var(--color-error)' }
   return { label: 'uncertain', color: 'var(--color-text-4)' }
 }
@@ -40,7 +41,7 @@ export function CandidateRow({
             {String(index + 1).padStart(2, '0')}
           </span>
           <h3
-            className="display text-2xl md:text-3xl font-semibold truncate"
+            className="display text-3xl md:text-4xl font-semibold truncate"
             style={{ letterSpacing: '-0.025em' }}
           >
             {c.name}
@@ -82,29 +83,47 @@ export function CandidateRow({
             <p className="mono text-[10px] tracking-widest ink-softer uppercase mb-2">
               Why it works
             </p>
-            <p className="text-sm leading-relaxed mb-4 ink-soft">{c.rationale}</p>
+            <p
+              className="leading-relaxed mb-4 ink-soft"
+              style={{ fontSize: 14, fontWeight: 300, lineHeight: 1.75 }}
+            >
+              {c.rationale}
+            </p>
             <p className="mono text-[10px] tracking-widest ink-softer uppercase mb-2">
               Trademark notes
             </p>
-            <p className="text-sm leading-relaxed ink-soft">{c.trademarkNotes}</p>
+            <p
+              className="leading-relaxed ink-soft"
+              style={{ fontSize: 14, fontWeight: 300, lineHeight: 1.75 }}
+            >
+              {c.trademarkNotes}
+            </p>
           </div>
           <div>
             <p className="mono text-[10px] tracking-widest ink-softer uppercase mb-3">Domains</p>
             <ul className="space-y-1.5 mb-4">
-              {(['com', 'io', 'co'] as const).map((tld) => {
-                const s = domainStatus(c.domains[tld])
+              {Object.entries(c.domains.tlds).map(([tld, status]) => {
+                const s = domainStatus(status)
                 return (
                   <li key={tld} className="flex items-baseline justify-between text-sm">
-                    <span className="mono text-xs">
+                    <span className="mono" style={{ fontSize: 13 }}>
                       {c.name.toLowerCase()}.{tld}
                     </span>
-                    <span className="mono text-[10px] tracking-wider" style={{ color: s.color }}>
+                    <span className="mono tracking-wider" style={{ fontSize: 11, color: s.color }}>
                       {s.label}
                     </span>
                   </li>
                 )
               })}
             </ul>
+            {Object.values(c.domains.tlds).some(
+              (s) => s === 'uncertain' || s === 'likely taken'
+            ) && (
+              <p className="mono text-[10px] ink-softer leading-relaxed mb-3">
+                Likely taken reflects active DNS only. Uncertain means DNS was inconclusive or
+                contradicted by registration data. Verify with a domain registrar before acting.
+              </p>
+            )}
             {c.domains.alternates.length > 0 && (
               <>
                 <p className="mono text-[10px] tracking-widest ink-softer uppercase mb-2">

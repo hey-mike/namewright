@@ -8,38 +8,50 @@ import type { Candidate } from '@/lib/types'
 function PreviewContent() {
   const params = useSearchParams()
   const reportId = params.get('report_id') ?? ''
-  const [summary, setSummary] = useState(() =>
-    reportId ? (sessionStorage.getItem('report_summary') ?? '') : ''
-  )
-  const [candidates, setCandidates] = useState<Candidate[]>(() => {
-    if (!reportId) return []
-    try {
-      const stored = sessionStorage.getItem('report_preview')
-      return stored ? (JSON.parse(stored) as Candidate[]) : []
-    } catch {
-      return []
-    }
-  })
-  const [totalCount, setTotalCount] = useState(() => {
-    if (!reportId) return 0
-    return Number(sessionStorage.getItem('report_total_count') ?? 0)
-  })
-  const [loading, setLoading] = useState(
-    () => !!reportId && !sessionStorage.getItem('report_preview')
-  )
-  const [notFound, setNotFound] = useState(!reportId)
+  const [summary, setSummary] = useState('')
+  const [candidates, setCandidates] = useState<Candidate[]>([])
+  const [totalCount, setTotalCount] = useState(0)
+  // `loading` starts true when there's a reportId so first paint shows the
+  // loading state instead of flashing the not-found view while the effect
+  // fires. Without a reportId there's nothing to load.
+  const [loading, setLoading] = useState(!!reportId)
+  const [fetchFailed, setFetchFailed] = useState(false)
   const [unlocking, setUnlocking] = useState(false)
   const [unlockError, setUnlockError] = useState<string | null>(null)
 
-  useEffect(() => {
-    // sessionStorage hit already handled by lazy initializers above
-    if (!reportId || candidates.length > 0) return
+  // notFound is derived during render rather than mutated in effect — it's
+  // either obvious from the URL or determinable once loading completes.
+  const notFound = !reportId || fetchFailed || (!loading && candidates.length === 0)
 
-    // sessionStorage empty — fetch from API (direct URL, new tab, shared link)
+  // sessionStorage is only available client-side; reads must run after mount
+  // so the page can server-render without crashing. The eslint disable is
+  // intentional: this is the canonical async-data-on-mount pattern (read
+  // sessionStorage cache, fall back to fetch). The state can't be derived
+  // during render because sessionStorage doesn't exist on the server.
+  /* eslint-disable react-hooks/set-state-in-effect */
+  useEffect(() => {
+    if (!reportId) return
+
+    try {
+      const stored = sessionStorage.getItem('report_preview')
+      if (stored) {
+        const parsed = JSON.parse(stored) as Candidate[]
+        if (parsed.length > 0) {
+          setSummary(sessionStorage.getItem('report_summary') ?? '')
+          setCandidates(parsed)
+          setTotalCount(Number(sessionStorage.getItem('report_total_count') ?? 0))
+          setLoading(false)
+          return
+        }
+      }
+    } catch {
+      // fall through to fetch
+    }
+
     fetch(`/api/preview?report_id=${reportId}`)
       .then((res) => {
         if (res.status === 404) {
-          setNotFound(true)
+          setFetchFailed(true)
           return null
         }
         return res.json()
@@ -50,9 +62,10 @@ function PreviewContent() {
         setCandidates(data.preview)
         setTotalCount(data.totalCount)
       })
-      .catch(() => setNotFound(true))
+      .catch(() => setFetchFailed(true))
       .finally(() => setLoading(false))
   }, [reportId])
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   async function handleUnlock() {
     setUnlocking(true)
@@ -75,12 +88,14 @@ function PreviewContent() {
   if (loading) {
     return (
       <main className="max-w-3xl mx-auto px-6 py-20">
-        <p className="ink-soft text-sm">Loading…</p>
+        <p className="ink-soft text-sm" aria-live="polite">
+          Loading…
+        </p>
       </main>
     )
   }
 
-  if (notFound || !candidates.length) {
+  if (notFound) {
     return (
       <main className="max-w-3xl mx-auto px-6 py-20">
         <p className="ink-soft text-sm">
@@ -117,8 +132,8 @@ export default function PreviewPage() {
             style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--color-accent)' }}
           />
           <span
-            className="display text-sm font-bold"
-            style={{ letterSpacing: '-0.02em', color: 'var(--color-text-1)' }}
+            className="display text-sm font-semibold"
+            style={{ letterSpacing: '-0.01em', color: 'var(--color-text-1)', fontStyle: 'italic' }}
           >
             Namewright
           </span>
