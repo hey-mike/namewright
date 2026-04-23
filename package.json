@@ -14,6 +14,7 @@
     "@anthropic-ai/sdk": "^0.90.0",
     "@launchdarkly/node-server-sdk": "^9.10.11",
     "@react-pdf/renderer": "^4.5.1",
+    "@sentry/nextjs": "^10.49.0",
     "@signa-so/sdk": "^0.2.2",
     "@vercel/kv": "^3.0.0",
     "jose": "^6.2.2",

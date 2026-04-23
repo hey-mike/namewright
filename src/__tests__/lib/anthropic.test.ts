@@ -56,7 +56,12 @@ const VALID_PROPOSALS = Array.from({ length: 8 }, (_, i) => ({
 }))
 
 function makeTextResponse(text: string) {
-  return { content: [{ type: 'text', text }] }
+  return {
+    content: [{ type: 'text', text }],
+    // logAnthropicUsage reads usage from the response — provide stub values
+    // so tests don't need to know about the cost-tracking layer.
+    usage: { input_tokens: 100, output_tokens: 50 },
+  }
 }
 
 describe('parseReport', () => {

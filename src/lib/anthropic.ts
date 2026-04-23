@@ -11,7 +11,10 @@ import {
 import { checkAllEuipoTrademarks, shouldQueryEuipo } from './euipo'
 import { checkAllDomains } from './dns'
 import { isFlagEnabled } from './flags'
+import { logAnthropicUsage, logProviderUsage } from './cost'
 import logger from './logger'
+
+const SONNET_MODEL = 'claude-sonnet-4-6'
 
 const client = new Anthropic()
 
@@ -281,10 +284,13 @@ Common picks:
 
 Respond with only a single integer between 1 and 45. No explanation, no JSON, no other characters.`
 
-export async function inferNiceClass(req: GenerateRequest): Promise<number> {
+export async function inferNiceClass(
+  req: GenerateRequest,
+  opts: { requestId?: string } = {}
+): Promise<number> {
   try {
     const response = await client.messages.create({
-      model: 'claude-sonnet-4-6',
+      model: SONNET_MODEL,
       max_tokens: 10,
       system: NICE_CLASS_INFERENCE_PROMPT,
       messages: [
@@ -293,6 +299,12 @@ export async function inferNiceClass(req: GenerateRequest): Promise<number> {
           content: `Product description: ${req.description}\n\nPrimary market: ${req.geography}`,
         },
       ],
+    })
+    logAnthropicUsage({
+      requestId: opts.requestId,
+      step: 'infer-nice-class',
+      model: SONNET_MODEL,
+      usage: response.usage,
     })
 
     const text = extractText(response.content).trim()
@@ -346,7 +358,10 @@ Valid values for "style": "descriptive", "invented", "metaphorical", "acronym", 
 
 Return 8-12 items. No trademark or domain data — that is handled separately.`
 
-export async function generateCandidates(req: GenerateRequest): Promise<CandidateProposal[]> {
+export async function generateCandidates(
+  req: GenerateRequest,
+  opts: { requestId?: string } = {}
+): Promise<CandidateProposal[]> {
   const userMessage = `Product: ${req.description}
 Brand personality: ${req.personality}
 Constraints: ${req.constraints || 'none'}
@@ -356,7 +371,7 @@ Generate brand name candidates as a JSON array.`
 
   try {
     const response = await client.messages.create({
-      model: 'claude-sonnet-4-6',
+      model: SONNET_MODEL,
       max_tokens: 3000,
       system: GENERATE_CANDIDATES_PROMPT,
       messages: [{ role: 'user', content: userMessage }],
@@ -365,6 +380,12 @@ Generate brand name candidates as a JSON array.`
     const text = extractText(response.content)
     if (!text) throw new Error('Model returned no text block — likely ended on a tool call')
 
+    logAnthropicUsage({
+      requestId: opts.requestId,
+      step: 'generate-candidates',
+      model: SONNET_MODEL,
+      usage: response.usage,
+    })
     return parseProposals(text)
   } catch (err) {
     rethrowAnthropicError(err)
@@ -418,7 +439,8 @@ Valid values for domain TLDs: "available", "taken", "likely taken", "uncertain".
 
 export async function synthesiseReport(
   req: GenerateRequest,
-  verified: VerifiedCandidate[]
+  verified: VerifiedCandidate[],
+  opts: { requestId?: string } = {}
 ): Promise<ReportData> {
   const candidateLines = verified
     .map((v) => {
@@ -461,7 +483,7 @@ Produce the final brand name report as JSON.`
 
   try {
     const response = await client.messages.create({
-      model: 'claude-sonnet-4-6',
+      model: SONNET_MODEL,
       max_tokens: 6000,
       system: SYNTHESISE_REPORT_PROMPT,
       messages: [{ role: 'user', content: userMessage }],
@@ -470,6 +492,12 @@ Produce the final brand name report as JSON.`
     const text = extractText(response.content)
     if (!text) throw new Error('Model returned no text block — likely ended on a tool call')
 
+    logAnthropicUsage({
+      requestId: opts.requestId,
+      step: 'synthesise-report',
+      model: SONNET_MODEL,
+      usage: response.usage,
+    })
     return parseReport(text)
   } catch (err) {
     rethrowAnthropicError(err)
@@ -489,10 +517,33 @@ export async function generateReport(
   // inference is cheap (~500ms) so the merged latency is dominated by
   // generateCandidates. inferNiceClass never throws — it falls back to 42.
   const [proposals, niceClass] = await Promise.all([
-    generateCandidates(reqWithTlds),
-    inferNiceClass(reqWithTlds),
+    generateCandidates(reqWithTlds, { requestId }),
+    inferNiceClass(reqWithTlds, { requestId }),
   ])
   logger.info({ requestId, niceClass }, 'inferred Nice class for trademark search')
+
+  logProviderUsage({
+    requestId,
+    provider: 'signa',
+    calls: proposals.length,
+    notes: 'one search per candidate',
+  })
+  if (await isFlagEnabled(EUIPO_CROSS_CHECK_FLAG, { key: requestId }, false)) {
+    if (shouldQueryEuipo(req.geography)) {
+      logProviderUsage({
+        requestId,
+        provider: 'euipo-direct',
+        calls: proposals.length,
+        notes: 'parallel cross-check via LD flag',
+      })
+    }
+  }
+  logProviderUsage({
+    requestId,
+    provider: 'dns-lookup',
+    calls: proposals.length * tlds.length,
+    notes: '3-layer aggregation (DNS+RDAP+WhoisJSON) per candidate × tld',
+  })
 
   let trademarkMap: Map<string, TrademarkCheckResult> = new Map()
   let domainMap: Map<string, import('./types').DomainAvailability> = new Map()
@@ -543,5 +594,5 @@ export async function generateReport(
     },
   }))
 
-  return synthesiseReport(reqWithTlds, verified)
+  return synthesiseReport(reqWithTlds, verified, { requestId })
 }

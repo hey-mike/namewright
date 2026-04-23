@@ -4,6 +4,7 @@ import Anthropic from '@anthropic-ai/sdk'
 import { generateReport } from '@/lib/anthropic'
 import { saveReport } from '@/lib/kv'
 import { validateEnv } from '@/lib/env'
+import { notifySlack } from '@/lib/alerts'
 import logger from '@/lib/logger'
 import { SUPPORTED_TLDS, DEFAULT_TLDS } from '@/lib/types'
 import type { GenerateRequest } from '@/lib/types'
@@ -94,7 +95,16 @@ export async function POST(req: Request) {
   try {
     await saveReport(reportId, report)
   } catch (err) {
-    log.error({ err: err instanceof Error ? err.message : String(err) }, 'KV save failed')
+    const errMsg = err instanceof Error ? err.message : String(err)
+    log.error({ err: errMsg }, 'KV save failed')
+    // KV is the only persistence layer for reports — a save failure means the
+    // user can't be served the report they just paid for (or are about to).
+    await notifySlack({
+      severity: 'critical',
+      title: 'KV save failed for generated report',
+      details: { reportId, error: errMsg },
+      requestId,
+    })
     return NextResponse.json({ error: 'Failed to save report. Please try again.' }, { status: 503 })
   }
 
