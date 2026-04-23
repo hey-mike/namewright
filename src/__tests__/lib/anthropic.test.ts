@@ -94,6 +94,34 @@ describe('parseReport', () => {
     expect(parseReport(JSON.stringify(dirty)).candidates[0].name).toBe('TestBrand')
   })
 
+  it('throws on Cyrillic homoglyphs in candidate names', () => {
+    // "Cadенce" contains Cyrillic е (U+0435) and н (U+043D) — looks Latin but isn't.
+    // The LLM occasionally slips these in for Latin-looking words. We want a
+    // loud throw so the route retries instead of silently shipping.
+    const dirty = {
+      ...VALID_REPORT,
+      candidates: [{ ...VALID_REPORT.candidates[0], name: 'Cadенce' }],
+    }
+    expect(() => parseReport(JSON.stringify(dirty))).toThrow(/non-ASCII|homoglyph/)
+  })
+
+  it('throws on emoji in candidate names', () => {
+    const dirty = {
+      ...VALID_REPORT,
+      candidates: [{ ...VALID_REPORT.candidates[0], name: 'Rocket🚀' }],
+    }
+    expect(() => parseReport(JSON.stringify(dirty))).toThrow(/non-ASCII|homoglyph/)
+  })
+
+  it('allows plain ASCII names to pass through unchanged', () => {
+    const clean = {
+      ...VALID_REPORT,
+      candidates: [{ ...VALID_REPORT.candidates[0], name: 'Cadence' }],
+      topPicks: [{ ...VALID_REPORT.topPicks[0], name: 'Cadence' }],
+    }
+    expect(parseReport(JSON.stringify(clean)).candidates[0].name).toBe('Cadence')
+  })
+
   it('strips leading dots from TLD keys', () => {
     const dirty = {
       ...VALID_REPORT,

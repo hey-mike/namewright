@@ -186,10 +186,21 @@ function rethrowAnthropicError(err: unknown): never {
 }
 
 // Strips trailing punctuation/whitespace from LLM-generated names so that
-// `${name}.${tld}` doesn't render as e.g. "quorient..com".
+// `${name}.${tld}` doesn't render as e.g. "quorient..com". NFKC normalizes
+// compatibility-equivalent Unicode forms (e.g. full-width Latin to ASCII).
 function normalizeCandidateName(name: string): string {
-  return name.replace(/[.,!?;:\s]+$/, '').trim()
+  return name
+    .normalize('NFKC')
+    .replace(/[.,!?;:\s]+$/, '')
+    .trim()
 }
+
+// Matches any character outside basic printable ASCII (space through tilde).
+// Catches Cyrillic homoglyphs ("Cadенce"), full-width Latin, emoji, etc. —
+// none of which a brand name should contain. The LLM occasionally slips
+// these in when generating Latin-looking words that have visual twins in
+// other scripts; throwing here is loud and the route retries cleanly.
+const NON_ASCII_RE = /[^\x20-\x7E]/
 
 function validateCandidateBase(c: unknown, i: number): void {
   if (!c || typeof c !== 'object') throw new Error(`candidates[${i}] is not an object`)
@@ -198,6 +209,10 @@ function validateCandidateBase(c: unknown, i: number): void {
     throw new Error(`candidates[${i}].name missing`)
   candidate.name = normalizeCandidateName(candidate.name)
   if (!candidate.name) throw new Error(`candidates[${i}].name empty after normalization`)
+  if (NON_ASCII_RE.test(candidate.name as string))
+    throw new Error(
+      `candidates[${i}].name contains non-ASCII characters (likely homoglyph): ${candidate.name}`
+    )
   if (!VALID_STYLES.has(candidate.style as string))
     throw new Error(`candidates[${i}].style invalid: ${candidate.style}`)
   if (typeof candidate.rationale !== 'string' || !candidate.rationale)
@@ -405,7 +420,11 @@ const SYNTHESISE_REPORT_PROMPT = `You are a brand strategy expert. You have been
 - Copy domain status values exactly as provided — do not alter them.
 - For each TLD marked as "taken" or "likely taken", suggest 2-3 creative alternate domain strings (e.g. getbrandname.com, trybrandname.io). Leave "alternates" as an empty array if no TLD is taken or likely taken.
 - Select the 3 candidates with the best combined trademark safety and domain availability as topPicks. If fewer than 3 candidates are clearly defensible, include only those that are and explain the constraint in "reasoning".
-- Rank the full candidates array from most to least viable. Viability is determined by this priority order: (1) trademark risk — low beats moderate beats uncertain beats high; (2) domain availability — more TLDs available is better; (3) strategic fit with the brand personality.
+- A candidate is **unusable** if EVERY TLD status is "taken" or "likely taken" (zero available/uncertain TLDs). Unusable candidates:
+  - MUST be ranked at the bottom of the candidates array.
+  - MUST have their rationale prefixed with exactly: "Domain unavailable — naming inspiration only. " followed by the normal 2-3 sentence rationale.
+  - MUST NEVER appear in topPicks, regardless of trademark safety or strategic fit.
+- Rank the full candidates array from most to least viable. Viability is determined by this priority order: (1) usability — unusable candidates always rank last; (2) trademark risk — low beats moderate beats uncertain beats high; (3) domain availability — more confirmed-available TLDs beats more uncertain TLDs beats more taken TLDs (never treat "uncertain" as a positive signal, it means we couldn't confirm); (4) strategic fit with the brand personality.
 - Write actionable nextSteps for each topPick. Scope is limited to trademark and domain actions only — e.g. "File USPTO application in Nice Class 42", "Register acmely.io immediately", "Commission a clearance search before filing". Do not include marketing, product, or business advice.
 
 # Output
