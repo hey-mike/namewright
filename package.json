@@ -37,6 +37,11 @@
       "prettier --write"
     ]
   },
+  "overrides": {
+    "resend": {
+      "svix": "1.92.2"
+    }
+  },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
     "@testing-library/jest-dom": "^6.9.1",
