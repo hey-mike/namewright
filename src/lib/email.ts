@@ -117,7 +117,12 @@ export function renderReportEmail(report: ReportData): RenderedEmail {
     </div>
 
     <p style="font-size:13px;color:#5c4a36;margin:32px 0 0;line-height:1.6;">
-      <strong style="color:#1a1108;">Not legal advice.</strong> AI-assisted research based on real registry data and DNS signals. Verify with a qualified IP attorney before filing.
+      <strong style="color:#1a1108;">A research short-list, not a legal opinion.</strong>
+      This report is verified registry data (USPTO + EUIPO via Signa, WIPO Madrid) paired with real
+      domain availability (DNS + RDAP + WhoisJSON) and a ranked shortlist calibrated against
+      unregisterability criteria. Take it to a trademark attorney for formal clearance — they&apos;ll
+      work from this instead of starting cold, typically saving 1–2 billable hours ($300–600 at
+      standard rates).
     </p>
 
     <p style="font-size:12px;color:#9c8a76;margin:24px 0 0;line-height:1.6;">
@@ -154,22 +159,53 @@ function renderTopPicksHtml(topPicks: ReportData['topPicks']): string {
 }
 
 function renderAllCandidatesHtml(candidates: ReportData['candidates']): string {
-  const rows = candidates
+  const blocks = candidates.map((c, i) => renderCandidateDetailHtml(c, i)).join('')
+
+  return `<div style="margin-bottom:32px;">
+    <p style="font-family:'DM Mono',Menlo,monospace;font-size:10px;letter-spacing:0.18em;text-transform:uppercase;color:#9c8a76;margin:0 0 16px;">All ${candidates.length} candidates — ranked</p>
+    ${blocks}
+  </div>`
+}
+
+function renderCandidateDetailHtml(c: ReportData['candidates'][number], i: number): string {
+  const domainRows = Object.entries(c.domains.tlds)
     .map(
-      (c, i) => `<tr>
-      <td style="padding:8px 12px 8px 0;font-family:'DM Mono',Menlo,monospace;font-size:11px;color:#9c8a76;vertical-align:top;">${String(i + 1).padStart(2, '0')}</td>
-      <td style="padding:8px 12px 8px 0;font-family:Georgia,'Source Serif 4',serif;font-size:16px;color:#1a1108;vertical-align:top;">${escapeHtml(c.name)}</td>
-      <td style="padding:8px 12px 8px 0;font-family:'DM Mono',Menlo,monospace;font-size:10px;letter-spacing:0.1em;text-transform:uppercase;color:${riskColorHex(c.trademarkRisk)};vertical-align:top;">${escapeHtml(c.trademarkRisk)} risk</td>
-    </tr>`
+      ([tld, status]) => `<tr>
+        <td style="padding:4px 12px 4px 0;font-family:'DM Mono',Menlo,monospace;font-size:11px;color:#5c4a36;">.${escapeHtml(tld)}</td>
+        <td style="padding:4px 0;font-family:'DM Mono',Menlo,monospace;font-size:11px;color:${domainColorHex(status)};">${escapeHtml(status)}</td>
+      </tr>`
     )
     .join('')
 
-  return `<div style="margin-bottom:32px;">
-    <p style="font-family:'DM Mono',Menlo,monospace;font-size:10px;letter-spacing:0.18em;text-transform:uppercase;color:#9c8a76;margin:0 0 12px;">All ${candidates.length} candidates — ranked</p>
-    <table style="width:100%;border-collapse:collapse;border-top:1px solid #e5dccd;">
-      ${rows}
-    </table>
+  const alternates =
+    c.domains.alternates.length > 0
+      ? `<p style="font-family:'DM Mono',Menlo,monospace;font-size:10px;letter-spacing:0.14em;text-transform:uppercase;color:#9c8a76;margin:12px 0 4px;">Alternates</p>
+         <p style="font-size:13px;color:#5c4a36;margin:0;line-height:1.7;">${c.domains.alternates.map((a) => escapeHtml(a)).join(' · ')}</p>`
+      : ''
+
+  return `<div style="margin-bottom:24px;padding:20px;border:1px solid #e5dccd;border-radius:6px;background:#fdfaf3;">
+    <div style="display:flex;gap:12px;align-items:baseline;margin-bottom:8px;">
+      <span style="font-family:'DM Mono',Menlo,monospace;font-size:11px;color:#9c8a76;">${String(i + 1).padStart(2, '0')}</span>
+      <h4 style="font-family:Georgia,'Source Serif 4',serif;font-weight:700;font-size:20px;margin:0;color:#1a1108;">${escapeHtml(c.name)}</h4>
+      <span style="margin-left:auto;font-family:'DM Mono',Menlo,monospace;font-size:10px;letter-spacing:0.14em;text-transform:uppercase;color:${riskColorHex(c.trademarkRisk)};">${escapeHtml(c.trademarkRisk)} risk</span>
+    </div>
+    <p style="font-family:'DM Mono',Menlo,monospace;font-size:10px;letter-spacing:0.14em;text-transform:uppercase;color:#9c8a76;margin:12px 0 4px;">Style</p>
+    <p style="font-size:13px;color:#5c4a36;margin:0;line-height:1.7;">${escapeHtml(c.style)}</p>
+    <p style="font-family:'DM Mono',Menlo,monospace;font-size:10px;letter-spacing:0.14em;text-transform:uppercase;color:#9c8a76;margin:12px 0 4px;">Rationale</p>
+    <p style="font-size:13px;color:#5c4a36;margin:0;line-height:1.7;">${escapeHtml(c.rationale)}</p>
+    <p style="font-family:'DM Mono',Menlo,monospace;font-size:10px;letter-spacing:0.14em;text-transform:uppercase;color:#9c8a76;margin:12px 0 4px;">Trademark notes</p>
+    <p style="font-size:13px;color:#5c4a36;margin:0;line-height:1.7;">${escapeHtml(c.trademarkNotes)}</p>
+    <p style="font-family:'DM Mono',Menlo,monospace;font-size:10px;letter-spacing:0.14em;text-transform:uppercase;color:#9c8a76;margin:12px 0 4px;">Domains</p>
+    <table style="border-collapse:collapse;margin:0;">${domainRows}</table>
+    ${alternates}
   </div>`
+}
+
+function domainColorHex(status: string): string {
+  if (status === 'available') return '#3d6b3d'
+  if (status === 'taken') return '#a83232'
+  if (status === 'likely taken') return '#8a6a1f'
+  return '#9c8a76'
 }
 
 function riskColorHex(risk: string): string {
@@ -208,7 +244,18 @@ function renderReportEmailText(report: ReportData): string {
   lines.push(`ALL ${report.candidates.length} CANDIDATES — RANKED`)
   lines.push('-'.repeat(60))
   report.candidates.forEach((c, i) => {
+    lines.push('')
     lines.push(`${String(i + 1).padStart(2, '0')}  ${c.name}  [${c.trademarkRisk} risk]`)
+    lines.push(`    Style: ${c.style}`)
+    lines.push(`    Rationale: ${c.rationale}`)
+    lines.push(`    Trademark notes: ${c.trademarkNotes}`)
+    const domainLine = Object.entries(c.domains.tlds)
+      .map(([tld, status]) => `.${tld}: ${status}`)
+      .join('  |  ')
+    if (domainLine) lines.push(`    Domains: ${domainLine}`)
+    if (c.domains.alternates.length > 0) {
+      lines.push(`    Alternates: ${c.domains.alternates.join(' · ')}`)
+    }
   })
   lines.push('')
 
@@ -218,8 +265,11 @@ function renderReportEmailText(report: ReportData): string {
   lines.push('  - IP Australia:  https://search.ipaustralia.gov.au/trademarks/search/quick')
   lines.push('  - WHOIS lookup:  https://www.whois.com/whois/')
   lines.push('')
-  lines.push('Not legal advice. AI-assisted research based on real registry')
-  lines.push('data and DNS signals. Verify with a qualified IP attorney.')
+  lines.push('A research short-list, not a legal opinion. Verified registry')
+  lines.push('data (USPTO + EUIPO via Signa, WIPO Madrid) paired with real')
+  lines.push('domain availability (DNS + RDAP + WhoisJSON), ranked against')
+  lines.push('unregisterability criteria. Take it to a trademark attorney')
+  lines.push('for formal clearance — saves 1–2 billable hours ($300–600).')
   lines.push('')
   lines.push('This is your permanent copy. Reply to this email with questions.')
   return lines.join('\n')

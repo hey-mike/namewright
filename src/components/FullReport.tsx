@@ -139,9 +139,14 @@ export function FullReport({ report }: { report: ReportData }) {
 
       <section className="mb-14">
         <p className="text-xs ink-softer leading-relaxed">
-          <strong style={{ color: 'var(--color-text-3)' }}>Not legal advice.</strong> AI-assisted
-          research based on web search signals as of {today}. Not a substitute for a USPTO, EUIPO,
-          or IP Australia registry search. Verify with a qualified IP attorney before filing.
+          <strong style={{ color: 'var(--color-text-3)' }}>
+            A research short-list, not a legal opinion.
+          </strong>{' '}
+          This report is verified registry data (USPTO + EUIPO via Signa, WIPO Madrid) paired with
+          real domain availability (DNS + RDAP + WhoisJSON) and a ranked shortlist calibrated
+          against unregisterability criteria. Take it to a trademark attorney for formal clearance —
+          they&apos;ll work from this instead of starting cold, typically saving 1–2 billable hours
+          ($300–600 at standard rates). Registry data as of {today}.
         </p>
       </section>
 

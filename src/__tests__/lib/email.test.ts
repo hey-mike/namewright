@@ -151,4 +151,39 @@ describe('renderReportEmail', () => {
     expect(text).toContain('Standwell')
     expect(text).toContain('Dailync')
   })
+
+  it('includes per-candidate rationale, trademark notes, and domains in HTML', () => {
+    const { html } = renderReportEmail(SAMPLE_REPORT)
+    expect(html).toContain('Combines stand-up with well')
+    expect(html).toContain('One similar mark in Class 42')
+    expect(html).toContain('.com')
+    expect(html).toContain('.io')
+    expect(html).toContain('getdailync.com')
+  })
+
+  it('includes per-candidate rationale, trademark notes, and domains in plain text', () => {
+    const { text } = renderReportEmail(SAMPLE_REPORT)
+    expect(text).toContain('Rationale: Combines stand-up with well')
+    expect(text).toContain('Trademark notes: One similar mark in Class 42')
+    expect(text).toContain('.com: available')
+    expect(text).toContain('.io: available')
+    expect(text).toContain('Alternates: getdailync.com')
+  })
+
+  it('omits the alternates block when a candidate has no alternates', () => {
+    const { html, text } = renderReportEmail(SAMPLE_REPORT)
+    // Standwell has no alternates — confirm we don't emit an empty header
+    const standwellBlock = html.slice(html.indexOf('Standwell'), html.indexOf('Dailync'))
+    expect(standwellBlock).not.toContain('Alternates')
+    const standwellText = text.slice(text.indexOf('Standwell'), text.indexOf('Dailync'))
+    expect(standwellText).not.toContain('Alternates:')
+  })
+
+  it('uses the new value-forward disclaimer wording', () => {
+    const { html, text } = renderReportEmail(SAMPLE_REPORT)
+    expect(html).toContain('research short-list, not a legal opinion')
+    expect(text).toContain('research short-list, not a legal opinion')
+    expect(html).not.toContain('Not legal advice.')
+    expect(text).not.toContain('Not legal advice.')
+  })
 })
