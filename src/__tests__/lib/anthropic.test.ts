@@ -353,6 +353,49 @@ describe('generateCandidates', () => {
     expect(result).toHaveLength(8)
     expect(mockCreate).toHaveBeenCalledTimes(2)
   })
+
+  it('retries once with ASCII caveat when the first attempt produces a homoglyph', async () => {
+    // First attempt: LLM slips in "Cadенce" (Cyrillic е н) — validator throws
+    // Second attempt: LLM produces clean ASCII names
+    const homoglyphProposals = [
+      { name: 'Cadенce', style: 'invented', rationale: 'Homoglyph slip.' },
+      ...MOCK_PROPOSALS.slice(1),
+    ]
+    mockCreate
+      .mockResolvedValueOnce(makeTextResponse(JSON.stringify(homoglyphProposals)))
+      .mockResolvedValueOnce(makeTextResponse(JSON.stringify(MOCK_PROPOSALS)))
+
+    const result = await generateCandidates({
+      description: 'x',
+      personality: 'y',
+      constraints: '',
+      geography: 'z',
+    })
+
+    expect(result).toHaveLength(8)
+    expect(mockCreate).toHaveBeenCalledTimes(2)
+    // Confirm the retry carried the ASCII caveat in the user message
+    const retryCall = mockCreate.mock.calls[1][0]
+    const retryUserMsg = retryCall.messages[0].content as string
+    expect(retryUserMsg).toContain('ASCII Latin characters')
+    expect(retryUserMsg).toContain('Cyrillic')
+  })
+
+  it('throws if both attempts produce homoglyph-prone names', async () => {
+    // Both attempts slip homoglyphs — accept the failure
+    const homoglyphProposals = [
+      { name: 'Cadенce', style: 'invented', rationale: 'Still cyrillic.' },
+      ...MOCK_PROPOSALS.slice(1),
+    ]
+    mockCreate
+      .mockResolvedValueOnce(makeTextResponse(JSON.stringify(homoglyphProposals)))
+      .mockResolvedValueOnce(makeTextResponse(JSON.stringify(homoglyphProposals)))
+
+    await expect(
+      generateCandidates({ description: 'x', personality: 'y', constraints: '', geography: 'z' })
+    ).rejects.toThrow(/homoglyph-prone/)
+    expect(mockCreate).toHaveBeenCalledTimes(2)
+  })
 })
 
 import type { TrademarkCheckResult } from '@/lib/signa'
@@ -691,12 +734,15 @@ describe('validateGroundedMarks', () => {
     }
   }
 
-  function makeVerified(conflictMarks: string[]) {
+  function makeVerified(conflictMarks: string[], owners: string[] = []) {
     return [
       {
         name: 'Acmely',
         trademark: {
-          conflicts: conflictMarks.map((m) => ({ markText: m })),
+          conflicts: conflictMarks.map((m, i) => ({
+            markText: m,
+            ownerName: owners[i],
+          })),
         },
       },
     ]
@@ -730,6 +776,34 @@ describe('validateGroundedMarks', () => {
   it('accepts partial substring matches (cited mark is shorter than input)', () => {
     const report = makeReport('CADENCE conflicts with the candidate.')
     const verified = makeVerified(['CADENCE DESIGN SYSTEMS, INC.'])
+    validateGroundedMarks(report, verified)
+    const ungroundedCalls = warnSpy.mock.calls.filter((c) => c[0]?.event === 'ungrounded_citation')
+    expect(ungroundedCalls).toHaveLength(0)
+  })
+
+  it("does not flag the candidate's own name as an ungrounded citation", () => {
+    // LLM commonly writes "ACMELY has no conflicts..." — echoing the candidate
+    // name is not a hallucination.
+    const report = makeReport('ACMELY has zero trademark conflicts in the queried offices.')
+    const verified = makeVerified([])
+    validateGroundedMarks(report, verified)
+    const ungroundedCalls = warnSpy.mock.calls.filter((c) => c[0]?.event === 'ungrounded_citation')
+    expect(ungroundedCalls).toHaveLength(0)
+  })
+
+  it('does not flag owner names that appear in input conflicts', () => {
+    const report = makeReport(
+      'Conflicts cited: CADENCE DESIGN SYSTEMS (reg #3474135) — narrow industry scope.'
+    )
+    const verified = makeVerified(['CADENCE'], ['Cadence Design Systems, Inc.'])
+    validateGroundedMarks(report, verified)
+    const ungroundedCalls = warnSpy.mock.calls.filter((c) => c[0]?.event === 'ungrounded_citation')
+    expect(ungroundedCalls).toHaveLength(0)
+  })
+
+  it('does not flag registration numbers as ungrounded citations', () => {
+    const report = makeReport('Conflict registered as W01053769 in 2018.')
+    const verified = makeVerified([])
     validateGroundedMarks(report, verified)
     const ungroundedCalls = warnSpy.mock.calls.filter((c) => c[0]?.event === 'ungrounded_citation')
     expect(ungroundedCalls).toHaveLength(0)

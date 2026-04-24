@@ -385,7 +385,28 @@ const MARK_CITATION_STOPWORDS = new Set([
   'SIGNA',
   'CANCELLATION_PENDING',
   'OPPOSITION_PENDING',
+  // Domain/DNS vocabulary that shows up in trademarkNotes but isn't a mark
+  'TLD',
+  'DNS',
+  'WHOIS',
+  // Country / jurisdiction codes that appear in notes but aren't marks
+  'US',
+  'USA',
+  'UK',
+  'EU',
+  'CN',
+  'JP',
+  'DE',
+  'FR',
+  'AU',
+  'CA',
+  'AB',
 ])
+
+// Matches tokens that look like trademark registration numbers, not mark
+// names. Examples: EUIPO "W01234567" or "019187046"; USPTO "3474135".
+// Citations to these are references to record IDs, not brand names.
+const REG_NUMBER_RE = /^[A-Z]?\d{5,}$/
 
 // Extracts ALL-CAPS token sequences from trademarkNotes that look like mark
 // citations (distinct from vocabulary words excluded above). Used by the
@@ -403,12 +424,23 @@ export function extractCitedMarks(notes: string): string[] {
   for (const raw of matches) {
     const trimmed = raw.trim()
     if (trimmed.length < 2) continue
+    // Skip registration numbers (W01234567, 019187046, 3474135 etc.)
+    if (REG_NUMBER_RE.test(trimmed)) continue
     // Filter stopword-only matches (single-token or compound of all stopwords)
     const tokens = trimmed.split(/\s+/)
-    if (tokens.every((t) => MARK_CITATION_STOPWORDS.has(t))) continue
-    // Strip leading/trailing stopwords so "CADENCE INC" → "CADENCE"
-    while (tokens.length > 1 && MARK_CITATION_STOPWORDS.has(tokens[tokens.length - 1])) tokens.pop()
-    while (tokens.length > 1 && MARK_CITATION_STOPWORDS.has(tokens[0])) tokens.shift()
+    if (tokens.every((t) => MARK_CITATION_STOPWORDS.has(t) || REG_NUMBER_RE.test(t))) continue
+    // Strip leading/trailing stopwords + reg-numbers so "CADENCE INC" → "CADENCE"
+    while (
+      tokens.length > 1 &&
+      (MARK_CITATION_STOPWORDS.has(tokens[tokens.length - 1]) ||
+        REG_NUMBER_RE.test(tokens[tokens.length - 1]))
+    )
+      tokens.pop()
+    while (
+      tokens.length > 1 &&
+      (MARK_CITATION_STOPWORDS.has(tokens[0]) || REG_NUMBER_RE.test(tokens[0]))
+    )
+      tokens.shift()
     const normalized = tokens.join(' ')
     if (normalized.length < 2) continue
     if (seen.has(normalized)) continue
@@ -464,28 +496,39 @@ export function validateStyleDistribution(
 // escalating enforcement.
 export function validateGroundedMarks(
   report: ReportData,
-  verified: Array<{ name: string; trademark: { conflicts: Array<{ markText: string }> } }>
+  verified: Array<{
+    name: string
+    trademark: { conflicts: Array<{ markText: string; ownerName?: string }> }
+  }>
 ): void {
-  const conflictsByName = new Map<string, string[]>(
-    verified.map((v) => [v.name, v.trademark.conflicts.map((c) => c.markText.toUpperCase())])
+  // Build per-candidate ground-truth set: mark texts AND owner names appear
+  // in the LLM's input, so citing either is grounded. We also allow the
+  // candidate's own name (the LLM commonly echoes it: "CADENCE has no conflicts").
+  const groundTruthByName = new Map<string, string[]>(
+    verified.map((v) => {
+      const set: string[] = [v.name.toUpperCase()]
+      for (const c of v.trademark.conflicts) {
+        if (c.markText) set.push(c.markText.toUpperCase())
+        if (c.ownerName) set.push(c.ownerName.toUpperCase())
+      }
+      return [v.name, set]
+    })
   )
 
   for (const c of report.candidates) {
-    const inputMarks = conflictsByName.get(c.name) ?? []
-    // No input conflicts → ANY cited mark is ungrounded (a likely hallucination)
-    // With input conflicts → each cited mark must substring-match one input mark
+    const ground = groundTruthByName.get(c.name) ?? [c.name.toUpperCase()]
     const cited = extractCitedMarks(c.trademarkNotes)
     for (const mark of cited) {
-      const grounded = inputMarks.some((input) => input.includes(mark) || mark.includes(input))
+      const grounded = ground.some((g) => g.includes(mark) || mark.includes(g))
       if (!grounded) {
         logger.warn(
           {
             candidate: c.name,
             cited: mark,
-            inputMarkCount: inputMarks.length,
+            groundTruthSize: ground.length,
             event: 'ungrounded_citation',
           },
-          'trademarkNotes cites a mark not in input conflicts — possible hallucination'
+          'trademarkNotes cites text not found in input conflicts, owner names, or candidate name — possible hallucination'
         )
       }
     }
@@ -762,41 +805,74 @@ Valid values for "style": "descriptive", "invented", "metaphorical", "acronym", 
 
 Return 8-12 items. No trademark or domain data — that is handled separately.`
 
+// Detects errors thrown by the homoglyph validator so we can retry the LLM
+// call with a stricter ASCII caveat rather than failing the whole pipeline.
+// Empirically ~10-15% of first attempts slip a Cyrillic/Greek character.
+function isHomoglyphError(err: unknown): boolean {
+  return err instanceof Error && /homoglyph-prone script/.test(err.message)
+}
+
+const ASCII_ONLY_CAVEAT =
+  '\n\nCRITICAL: Every candidate "name" MUST use ONLY basic ASCII Latin characters (A-Z, a-z, digits, hyphen, apostrophe). Do NOT use Cyrillic letters (а, е, о, р, с, х), Greek letters (α, ο, ρ), full-width Latin, or any other Unicode look-alikes. Verify each name is pure Latin before including it.'
+
+async function callGenerateCandidatesOnce(
+  req: GenerateRequest,
+  opts: { requestId?: string; retryReason?: 'homoglyph' }
+): Promise<CandidateProposal[]> {
+  const asciiCaveat = opts.retryReason === 'homoglyph' ? ASCII_ONLY_CAVEAT : ''
+  const userMessage = `Product: ${req.description}
+Brand personality: ${req.personality}
+Constraints: ${req.constraints || 'none'}
+Primary market: ${req.geography}${asciiCaveat}
+
+Generate brand name candidates as a JSON array.`
+
+  const response = await callWithRateLimitRetry(
+    () =>
+      client().messages.create({
+        model: SONNET_MODEL,
+        max_tokens: 3000,
+        system: GENERATE_CANDIDATES_PROMPT,
+        messages: [{ role: 'user', content: userMessage }],
+      }),
+    { requestId: opts.requestId, step: 'generate-candidates' }
+  )
+
+  const text = extractText(response.content)
+  if (!text) throw new Error('Model returned no text block — likely ended on a tool call')
+
+  logAnthropicUsage({
+    requestId: opts.requestId,
+    step: 'generate-candidates',
+    model: SONNET_MODEL,
+    usage: response.usage,
+  })
+  return parseProposals(text)
+}
+
 export async function generateCandidates(
   req: GenerateRequest,
   opts: { requestId?: string } = {}
 ): Promise<CandidateProposal[]> {
-  const userMessage = `Product: ${req.description}
-Brand personality: ${req.personality}
-Constraints: ${req.constraints || 'none'}
-Primary market: ${req.geography}
-
-Generate brand name candidates as a JSON array.`
-
   try {
-    const response = await callWithRateLimitRetry(
-      () =>
-        client().messages.create({
-          model: SONNET_MODEL,
-          max_tokens: 3000,
-          system: GENERATE_CANDIDATES_PROMPT,
-          messages: [{ role: 'user', content: userMessage }],
-        }),
-      { requestId: opts.requestId, step: 'generate-candidates' }
-    )
-
-    const text = extractText(response.content)
-    if (!text) throw new Error('Model returned no text block — likely ended on a tool call')
-
-    logAnthropicUsage({
-      requestId: opts.requestId,
-      step: 'generate-candidates',
-      model: SONNET_MODEL,
-      usage: response.usage,
-    })
-    return parseProposals(text)
+    return await callGenerateCandidatesOnce(req, opts)
   } catch (err) {
-    rethrowAnthropicError(err)
+    if (!isHomoglyphError(err)) {
+      rethrowAnthropicError(err)
+    }
+    logger.warn(
+      {
+        requestId: opts.requestId,
+        err: err instanceof Error ? err.message : String(err),
+        event: 'homoglyph_retry',
+      },
+      'generateCandidates produced a homoglyph-prone name — retrying with strict ASCII instruction'
+    )
+    try {
+      return await callGenerateCandidatesOnce(req, { ...opts, retryReason: 'homoglyph' })
+    } catch (retryErr) {
+      rethrowAnthropicError(retryErr)
+    }
   }
 }
 
