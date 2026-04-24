@@ -118,11 +118,24 @@ describe('checkAllDomains', () => {
     mockLookup.mockRejectedValue(Object.assign(new Error('ENOTFOUND'), { code: 'ENOTFOUND' }))
     mockFetchByUrl({
       'rdap.org': { status: 500 },
-      'whoisjson.com': { status: 200, body: { registered: false } },
+      'whoisjson.com': { status: 200, body: { available: true } },
     })
 
     const result = await checkAllDomains(CANDIDATES, DEFAULT_TLDS)
     expect(result.get('Acmely')?.tlds.com).toBe('available')
+  })
+
+  it('returns taken via WhoisJSON when API reports available=false', async () => {
+    process.env.WHOISJSON_API_KEY = 'test-key'
+    mockLookup.mockResolvedValue({ address: '1.2.3.4', family: 4 })
+    mockFetchByUrl({
+      'rdap.org': { status: 500 },
+      'whoisjson.com': { status: 200, body: { available: false } },
+    })
+
+    const result = await checkAllDomains(CANDIDATES, DEFAULT_TLDS)
+    // DNS taken + WhoisJSON taken = strong taken
+    expect(result.get('Acmely')?.tlds.com).toBe('taken')
   })
 
   it('returns uncertain on unexpected DNS error', async () => {

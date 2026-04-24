@@ -38,9 +38,12 @@ async function checkWhoisJson(hostname: string): Promise<LayerResult> {
       signal: AbortSignal.timeout(5000),
     })
     if (!res.ok) return null
-    const data = (await res.json()) as { registered?: boolean }
-    if (data.registered === false) return 'available'
-    if (data.registered === true) return 'taken'
+    // WhoisJSON's /domain-availability endpoint returns `{ available: bool }`
+    // — NOT `registered`. Wrong field name silently broke this layer for all
+    // domain checks until the 2026-04-24 accuracy audit.
+    const data = (await res.json()) as { available?: boolean }
+    if (data.available === true) return 'available'
+    if (data.available === false) return 'taken'
     return null
   } catch {
     return null

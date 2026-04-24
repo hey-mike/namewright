@@ -117,11 +117,21 @@ export function mergeTrademarkResults(
   const sourcesDisagree =
     signa.risk !== 'uncertain' && euipo.risk !== 'uncertain' && signa.risk !== euipo.risk
 
+  // Surface single-source-only coverage so the user knows the risk grade
+  // reflects partial data (one registry call failed). Asymmetric: we only
+  // run EUIPO for EU/Global geos, so "Signa-only" is the more common case.
+  const signaOnly = signa.risk !== 'uncertain' && euipo.risk === 'uncertain'
+  const euipoOnly = euipo.risk !== 'uncertain' && signa.risk === 'uncertain'
+
   let prefix = ''
   if (crossVerifiedClean) {
     prefix = 'Cross-verified clear across Signa + EUIPO. '
   } else if (sourcesDisagree) {
     prefix = `Sources disagree (Signa: ${signa.risk}, EUIPO: ${euipo.risk}); using worst-case. `
+  } else if (signaOnly) {
+    prefix = 'EUIPO check unavailable; risk reflects Signa-only data. '
+  } else if (euipoOnly) {
+    prefix = 'Signa check unavailable; risk reflects EUIPO-only data. '
   }
 
   return {
@@ -279,12 +289,26 @@ function normalizeCandidateName(name: string): string {
     .trim()
 }
 
-// Matches any character outside basic printable ASCII (space through tilde).
-// Catches Cyrillic homoglyphs ("Cadенce"), full-width Latin, emoji, etc. —
-// none of which a brand name should contain. The LLM occasionally slips
-// these in when generating Latin-looking words that have visual twins in
-// other scripts; throwing here is loud and the route retries cleanly.
-const NON_ASCII_RE = /[^\x20-\x7E]/
+// Catches scripts whose glyphs visually mimic Latin (homoglyph attacks) but
+// allows legitimate European diacritics (ç, é, ñ, ü, ø, æ, etc.) used in real
+// brand names — Provençal, Crème, Biergarten. The previous strict
+// `[^\x20-\x7E]` regex 502'd the pipeline on any French/Spanish/Italian name.
+//
+// Blocked ranges:
+//   U+0370–U+03FF   Greek (α, ε, ο, ρ look like Latin a, e, o, p)
+//   U+0400–U+052F   Cyrillic + Supplement (а, е, о, р, с identical to Latin)
+//   U+2000–U+206F   General Punctuation (zero-width joiners, fancy dashes)
+//   U+2100–U+214F   Letterlike Symbols (ℓ, ℎ, ℯ)
+//   U+2600–U+27BF   Misc Symbols + Dingbats (★, ✓, ✿)
+//   U+FF00–U+FFEF   Halfwidth/Fullwidth (ＡＢＣ)
+//   U+1D400–U+1D7FF Mathematical Alphanumeric (𝐚, 𝑎, 𝒂)
+//   U+1F300–U+1FAFF Emoji (🚀, ☕, etc.)
+const HOMOGLYPH_RE = new RegExp(
+  '[\\u0370-\\u03FF\\u0400-\\u052F\\u2000-\\u206F\\u2100-\\u214F\\u2600-\\u27BF\\uFF00-\\uFFEF]' +
+    '|[\\u{1D400}-\\u{1D7FF}]' +
+    '|[\\u{1F300}-\\u{1FAFF}]',
+  'u'
+)
 
 function validateCandidateBase(c: unknown, i: number): void {
   if (!c || typeof c !== 'object') throw new Error(`candidates[${i}] is not an object`)
@@ -293,14 +317,70 @@ function validateCandidateBase(c: unknown, i: number): void {
     throw new Error(`candidates[${i}].name missing`)
   candidate.name = normalizeCandidateName(candidate.name)
   if (!candidate.name) throw new Error(`candidates[${i}].name empty after normalization`)
-  if (NON_ASCII_RE.test(candidate.name as string))
+  if (HOMOGLYPH_RE.test(candidate.name as string))
     throw new Error(
-      `candidates[${i}].name contains non-ASCII characters (likely homoglyph): ${candidate.name}`
+      `candidates[${i}].name contains a homoglyph-prone script (Cyrillic/Greek/etc.): ${candidate.name}`
     )
   if (!VALID_STYLES.has(candidate.style as string))
     throw new Error(`candidates[${i}].style invalid: ${candidate.style}`)
   if (typeof candidate.rationale !== 'string' || !candidate.rationale)
     throw new Error(`candidates[${i}].rationale missing`)
+}
+
+// Required prefix the synthesise prompt instructs the LLM to attach to
+// rationales of unusable candidates (all TLDs taken/likely-taken). The
+// validator below enforces it — keeping these strings in sync.
+const UNUSABLE_PREFIX = 'Domain unavailable — naming inspiration only.'
+const TAKEN_STATUSES = new Set(['taken', 'likely taken'])
+
+function isUnusableCandidate(c: { domains: { tlds: Record<string, string> } }): boolean {
+  const statuses = Object.values(c.domains.tlds)
+  if (statuses.length === 0) return false
+  return statuses.every((s) => TAKEN_STATUSES.has(s))
+}
+
+// Cross-cutting invariants enforced after per-candidate validation:
+//   - topPicks names must reference an actual candidate (P1 #5 from accuracy audit)
+//   - Unusable candidates must have UNUSABLE_PREFIX in rationale (P0 #4)
+//   - Unusable candidates must be ranked contiguously at the bottom (P0 #4)
+//   - Unusable candidates must NOT appear in topPicks (P0 #4)
+// All violations throw — the route's retry path will get a clean second
+// LLM attempt rather than ship a misranked report.
+function validateReportInvariants(d: {
+  candidates: Array<{
+    name: string
+    rationale: string
+    domains: { tlds: Record<string, string> }
+  }>
+  topPicks: Array<{ name: string }>
+}): void {
+  const candidateNames = new Set(d.candidates.map((c) => c.name))
+  for (const [i, p] of d.topPicks.entries()) {
+    if (!candidateNames.has(p.name)) {
+      throw new Error(`topPicks[${i}].name "${p.name}" does not match any candidate name`)
+    }
+  }
+
+  let firstUnusableIndex = -1
+  for (const [i, c] of d.candidates.entries()) {
+    const unusable = isUnusableCandidate(c)
+    if (unusable) {
+      if (firstUnusableIndex === -1) firstUnusableIndex = i
+      if (!c.rationale.startsWith(UNUSABLE_PREFIX)) {
+        throw new Error(
+          `candidates[${i}] (${c.name}) is unusable (all TLDs taken) but rationale missing prefix "${UNUSABLE_PREFIX}"`
+        )
+      }
+      if (d.topPicks.some((p) => p.name === c.name)) {
+        throw new Error(`candidates[${i}] (${c.name}) is unusable but appears in topPicks`)
+      }
+    } else if (firstUnusableIndex !== -1) {
+      // A usable candidate appearing AFTER an unusable one violates "unusable always last"
+      throw new Error(
+        `candidates[${i}] (${c.name}) is usable but ranked after unusable candidate at position ${firstUnusableIndex}`
+      )
+    }
+  }
 }
 
 export function validateReportData(data: unknown): ReportData {
@@ -318,6 +398,10 @@ export function validateReportData(data: unknown): ReportData {
     const pick = p as Record<string, unknown>
     if (typeof pick.name !== 'string' || !pick.name)
       throw new Error(`topPicks[${i}].name missing or invalid`)
+    // Normalize the same way candidate names are normalized (trailing punct,
+    // NFKC) so cross-reference checks downstream don't fail on cosmetic drift.
+    pick.name = normalizeCandidateName(pick.name)
+    if (!pick.name) throw new Error(`topPicks[${i}].name empty after normalization`)
     if (typeof pick.reasoning !== 'string' || !pick.reasoning)
       throw new Error(`topPicks[${i}].reasoning missing or invalid`)
     if (typeof pick.nextSteps !== 'string' || !pick.nextSteps)
@@ -348,6 +432,19 @@ export function validateReportData(data: unknown): ReportData {
     if (!Array.isArray(domains.alternates))
       throw new Error(`candidates[${i}].domains.alternates missing`)
   }
+
+  // Cross-cutting invariants (ranking, prefix, topPicks integrity) — must
+  // run after the per-candidate loop has narrowed types and normalized TLDs.
+  validateReportInvariants(
+    d as unknown as {
+      candidates: Array<{
+        name: string
+        rationale: string
+        domains: { tlds: Record<string, string> }
+      }>
+      topPicks: Array<{ name: string }>
+    }
+  )
 
   // All fields validated above — cast is safe
   return d as unknown as ReportData
@@ -394,10 +491,18 @@ Common picks:
 
 Respond with only a single integer between 1 and 45. No explanation, no JSON, no other characters.`
 
+// Result of Nice class inference. `confidence` lets downstream surfaces
+// (synthesise prompt, user-facing notes) flag when the call fell back to the
+// default class so the user knows to verify before filing (P1 #8 audit).
+export interface NiceClassResult {
+  value: number
+  confidence: 'inferred' | 'fallback'
+}
+
 export async function inferNiceClass(
   req: GenerateRequest,
   opts: { requestId?: string } = {}
-): Promise<number> {
+): Promise<NiceClassResult> {
   try {
     const response = await client().messages.create({
       model: SONNET_MODEL,
@@ -420,10 +525,10 @@ export async function inferNiceClass(
     const text = extractText(response.content).trim()
     const parsed = parseInt(text, 10)
     if (Number.isFinite(parsed) && VALID_NICE_CLASSES.has(parsed)) {
-      return parsed
+      return { value: parsed, confidence: 'inferred' }
     }
     logger.warn({ text }, 'Nice class inference returned non-numeric — falling back to 42')
-    return NICE_CLASS_SOFTWARE
+    return { value: NICE_CLASS_SOFTWARE, confidence: 'fallback' }
   } catch (err) {
     // Inference is non-critical — failing here would block the whole pipeline.
     // Fall back to the software default and let the pipeline continue.
@@ -431,7 +536,7 @@ export async function inferNiceClass(
       { err: err instanceof Error ? err.message : String(err) },
       'Nice class inference failed — falling back to 42'
     )
-    return NICE_CLASS_SOFTWARE
+    return { value: NICE_CLASS_SOFTWARE, confidence: 'fallback' }
   }
 }
 
@@ -511,10 +616,31 @@ interface VerifiedCandidate extends CandidateProposal {
   domains: import('./types').DomainAvailability
 }
 
+// Extracts the cross-source coverage prefix (Cross-verified / Sources disagree /
+// EUIPO unavailable / Signa-only) that mergeTrademarkResults attaches to the
+// front of `notes`. Returns null if no coverage prefix is present (e.g. when
+// only one source ran). Single source of truth for both producers and
+// consumers of the prefix — keep the patterns aligned with mergeTrademarkResults.
+function extractCoverageNote(notes: string): string | null {
+  const patterns = [
+    /^Cross-verified clear[^.]*\./,
+    /^Sources disagree[^.]*\./,
+    /^EUIPO check unavailable[^.]*\./,
+    /^Signa check unavailable[^.]*\./,
+    /^Trademark searches across Signa and EUIPO were both unavailable\./,
+  ]
+  for (const re of patterns) {
+    const m = notes.match(re)
+    if (m) return m[0]
+  }
+  return null
+}
+
 const SYNTHESISE_REPORT_PROMPT = `You are a brand strategy expert. You have been given a list of brand name candidates with trademark search results and real domain availability data. Produce a final brand name report.
 
 # Instructions
 - Assess trademark risk using the data provided. When conflicts are listed, cite specific marks by name in trademarkNotes — include the mark text and at least one identifying detail (registration number, office, or class). When no conflicts are listed, state that clearly. Do NOT invent marks that are not in the provided conflict data.
+- When the data includes a "Coverage note:" line, you MUST preserve its meaning verbatim at the START of trademarkNotes for that candidate. Examples: "Cross-verified clear across Signa + EUIPO." (both registries returned no live conflicts), "Sources disagree (Signa: high, EUIPO: low); using worst-case." (registry results conflict), or "EUIPO check unavailable; risk reflects Signa-only data." (one source failed). This tells the user how confident the risk grade is.
 - Use only the trademarkRisk value provided in the data — do not re-bucket it.
 - Copy domain status values exactly as provided — do not alter them.
 - For each TLD marked as "taken" or "likely taken", suggest 2-3 creative alternate domain strings (e.g. getbrandname.com, trybrandname.io). Leave "alternates" as an empty array if no TLD is taken or likely taken.
@@ -558,7 +684,7 @@ Valid values for domain TLDs: "available", "taken", "likely taken", "uncertain".
 export async function synthesiseReport(
   req: GenerateRequest,
   verified: VerifiedCandidate[],
-  opts: { requestId?: string } = {}
+  opts: { requestId?: string; niceClassConfidence?: 'inferred' | 'fallback' } = {}
 ): Promise<ReportData> {
   const candidateLines = verified
     .map((v) => {
@@ -578,20 +704,31 @@ export async function synthesiseReport(
               .join('\n')}`
       const sources =
         v.trademark.sources.length > 0 ? v.trademark.sources.join(', ') : 'none (search degraded)'
+      // Surface the cross-source verification status so the LLM can preserve
+      // it in trademarkNotes — without this the "Cross-verified clear" /
+      // "Sources disagree" / "EUIPO unavailable" signal computed by
+      // mergeTrademarkResults is silently discarded (accuracy audit P0 #3).
+      const coverageNote = extractCoverageNote(v.trademark.notes)
+      const coverageLine = coverageNote ? `Coverage note: ${coverageNote}\n` : ''
       return `Name: ${v.name}
 Style: ${v.style}
 Rationale: ${v.rationale}
 Trademark risk (precomputed): ${v.trademark.risk}
 Sources queried: ${sources}
-${conflictLines}
+${coverageLine}${conflictLines}
 ${domainLines}`
     })
     .join('\n\n---\n\n')
 
+  const niceClassCaveat =
+    opts.niceClassConfidence === 'fallback'
+      ? '\n\nIMPORTANT: Nice class inference fell back to the default (Class 42 — software/SaaS). If the product is NOT software, advise the user in the recommendation field to confirm the correct Nice class with a trademark attorney before filing, since the trademark search results above may not reflect the right class.'
+      : ''
+
   const userMessage = `Product: ${req.description}
 Brand personality: ${req.personality}
 Constraints: ${req.constraints || 'none'}
-Primary market: ${req.geography}
+Primary market: ${req.geography}${niceClassCaveat}
 
 Verified candidates:
 
@@ -639,16 +776,20 @@ export async function generateReport(
   // inference is cheap (~500ms) so the merged latency is dominated by
   // generateCandidates. inferNiceClass never throws — it falls back to 42.
   let proposals: CandidateProposal[]
-  let niceClass: number
+  let niceClassResult: NiceClassResult
   try {
-    ;[proposals, niceClass] = await Promise.all([
+    ;[proposals, niceClassResult] = await Promise.all([
       generateCandidates(reqWithTlds, { requestId }),
       inferNiceClass(reqWithTlds, { requestId }),
     ])
   } catch (err) {
     throw tagStage('generate-candidates', err)
   }
-  logger.info({ requestId, niceClass }, 'inferred Nice class for trademark search')
+  const niceClass = niceClassResult.value
+  logger.info(
+    { requestId, niceClass, niceClassConfidence: niceClassResult.confidence },
+    'inferred Nice class for trademark search'
+  )
 
   logProviderUsage({
     requestId,
@@ -726,7 +867,10 @@ export async function generateReport(
   }))
 
   try {
-    return await synthesiseReport(reqWithTlds, verified, { requestId })
+    return await synthesiseReport(reqWithTlds, verified, {
+      requestId,
+      niceClassConfidence: niceClassResult.confidence,
+    })
   } catch (err) {
     throw tagStage('synthesise-report', err)
   }

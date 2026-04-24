@@ -113,6 +113,109 @@ describe('parseReport', () => {
     expect(() => parseReport(JSON.stringify(dirty))).toThrow(/non-ASCII|homoglyph/)
   })
 
+  it('throws when a topPick name does not match any candidate (P1 #5)', () => {
+    const dirty = {
+      ...VALID_REPORT,
+      topPicks: [{ name: 'NotInCandidates', reasoning: 'r', nextSteps: 's' }],
+    }
+    expect(() => parseReport(JSON.stringify(dirty))).toThrow(/does not match any candidate/)
+  })
+
+  it('throws when an unusable candidate is missing the "Domain unavailable" prefix (P0 #4)', () => {
+    const dirty = {
+      ...VALID_REPORT,
+      candidates: [
+        VALID_REPORT.candidates[0],
+        {
+          name: 'Doomed',
+          style: 'invented' as const,
+          rationale: 'Catchy and short.',
+          trademarkRisk: 'low' as const,
+          trademarkNotes: 'No conflicts.',
+          domains: {
+            tlds: { com: 'taken', io: 'likely taken', co: 'likely taken' },
+            alternates: ['getdoomed.com'],
+          },
+        },
+      ],
+    }
+    expect(() => parseReport(JSON.stringify(dirty))).toThrow(/missing prefix.*Domain unavailable/)
+  })
+
+  it('throws when an unusable candidate is not ranked at the bottom (P0 #4)', () => {
+    const unusable = {
+      name: 'Doomed',
+      style: 'invented' as const,
+      rationale: 'Domain unavailable — naming inspiration only. Catchy and short.',
+      trademarkRisk: 'low' as const,
+      trademarkNotes: 'No conflicts.',
+      domains: {
+        tlds: { com: 'taken', io: 'likely taken', co: 'likely taken' },
+        alternates: ['getdoomed.com'],
+      },
+    }
+    const dirty = {
+      ...VALID_REPORT,
+      // Unusable in position 0 (wrong), usable TestBrand in position 1
+      candidates: [unusable, VALID_REPORT.candidates[0]],
+      topPicks: [{ name: 'TestBrand', reasoning: 'r', nextSteps: 's' }],
+    }
+    expect(() => parseReport(JSON.stringify(dirty))).toThrow(/usable but ranked after unusable/)
+  })
+
+  it('throws when an unusable candidate appears in topPicks (P0 #4)', () => {
+    const unusable = {
+      name: 'Doomed',
+      style: 'invented' as const,
+      rationale: 'Domain unavailable — naming inspiration only. Catchy and short.',
+      trademarkRisk: 'low' as const,
+      trademarkNotes: 'No conflicts.',
+      domains: {
+        tlds: { com: 'taken', io: 'likely taken', co: 'likely taken' },
+        alternates: ['getdoomed.com'],
+      },
+    }
+    const dirty = {
+      ...VALID_REPORT,
+      candidates: [VALID_REPORT.candidates[0], unusable],
+      topPicks: [{ name: 'Doomed', reasoning: 'r', nextSteps: 's' }],
+    }
+    expect(() => parseReport(JSON.stringify(dirty))).toThrow(/unusable but appears in topPicks/)
+  })
+
+  it('accepts a properly ranked + prefixed unusable candidate at the bottom', () => {
+    const unusable = {
+      name: 'Doomed',
+      style: 'invented' as const,
+      rationale: 'Domain unavailable — naming inspiration only. Catchy and short.',
+      trademarkRisk: 'low' as const,
+      trademarkNotes: 'No conflicts.',
+      domains: {
+        tlds: { com: 'taken', io: 'likely taken', co: 'likely taken' },
+        alternates: ['getdoomed.com'],
+      },
+    }
+    const clean = {
+      ...VALID_REPORT,
+      candidates: [VALID_REPORT.candidates[0], unusable],
+      topPicks: [{ name: 'TestBrand', reasoning: 'r', nextSteps: 's' }],
+    }
+    expect(parseReport(JSON.stringify(clean)).candidates).toHaveLength(2)
+  })
+
+  it('accepts legitimate Latin diacritics (ç, é, ñ, ü, ø)', () => {
+    // The accuracy audit (2026-04-24) caught the previous strict regex 502'ing
+    // on Provençal — French/Spanish/Italian brand names are valid.
+    for (const name of ['Provençal', 'Crème', 'Mañana', 'Müller', 'Bjørk']) {
+      const clean = {
+        ...VALID_REPORT,
+        candidates: [{ ...VALID_REPORT.candidates[0], name }],
+        topPicks: [{ ...VALID_REPORT.topPicks[0], name }],
+      }
+      expect(parseReport(JSON.stringify(clean)).candidates[0].name).toBe(name)
+    }
+  })
+
   it('allows plain ASCII names to pass through unchanged', () => {
     const clean = {
       ...VALID_REPORT,
@@ -549,6 +652,23 @@ describe('mergeTrademarkResults', () => {
     expect(merged.sources).toEqual(['EUIPO direct'])
     // Should NOT mark this as a disagreement — uncertain isn't a real signal
     expect(merged.notes).not.toContain('disagree')
+    // Surfaces partial-coverage so user knows risk reflects EUIPO only (P1 #6 from accuracy audit)
+    expect(merged.notes).toContain('Signa check unavailable')
+  })
+
+  it('flags EUIPO unavailable when only Signa returned a concrete result', () => {
+    const uncertain: TrademarkCheckResult = {
+      candidateName: 'Acme',
+      risk: 'uncertain',
+      notes: 'unavailable',
+      sources: [],
+      conflicts: [],
+    }
+    const merged = mergeTrademarkResults(mkTrademark('Acme', 'low', 'Signa'), uncertain)
+
+    expect(merged.risk).toBe('low')
+    expect(merged.sources).toEqual(['Signa'])
+    expect(merged.notes).toContain('EUIPO check unavailable')
   })
 
   it('returns uncertain when both sources are uncertain', () => {
