@@ -24,7 +24,15 @@ jest.mock('@anthropic-ai/sdk', () => ({
   ),
 }))
 
-import { parseReport, parseProposals, generateCandidates, synthesiseReport } from '@/lib/anthropic'
+import {
+  parseReport,
+  parseProposals,
+  generateCandidates,
+  synthesiseReport,
+  extractCitedMarks,
+  validateGroundedMarks,
+  validateStyleDistribution,
+} from '@/lib/anthropic'
 import type { ReportData } from '@/lib/types'
 
 const VALID_REPORT: ReportData = {
@@ -612,6 +620,198 @@ describe('generateReport orchestrator', () => {
       'euipo-direct-cross-check',
       expect.objectContaining({ key: 'req-flagon' }),
       false
+    )
+  })
+})
+
+describe('extractCitedMarks', () => {
+  it('extracts ALL-CAPS mark names from trademark notes', () => {
+    const notes =
+      'Multiple live conflicts exist: CADENCE (USPTO, live, Class 42, reg #3474135, owner: Cadence Design Systems, Inc.), QUORUM (EUIPO, live, Class 35/42, reg #4785725).'
+    const cited = extractCitedMarks(notes)
+    expect(cited).toContain('CADENCE')
+    expect(cited).toContain('QUORUM')
+  })
+
+  it('filters out registry/structural stopwords', () => {
+    const notes = 'Multiple live conflicts in USPTO and EUIPO. Class 42 conflicts REGISTERED.'
+    const cited = extractCitedMarks(notes)
+    // USPTO, EUIPO, CLASS, REGISTERED are stopwords — should be filtered
+    expect(cited).toEqual([])
+  })
+
+  it('handles multi-word mark names', () => {
+    const notes = "STACIE'S SPACES (USPTO, live) is a narrow conflict."
+    const cited = extractCitedMarks(notes)
+    // The apostrophe-separated token should be captured
+    expect(cited.some((m) => m.includes('STACIE'))).toBe(true)
+  })
+
+  it('returns empty array for notes with no mark citations', () => {
+    expect(extractCitedMarks('No conflicts found in any registry.')).toEqual([])
+    expect(extractCitedMarks('Cross-verified clear across Signa + EUIPO.')).toEqual([])
+  })
+
+  it('deduplicates repeated mark references', () => {
+    const notes = 'CADENCE (USPTO) and CADENCE (EUIPO) are both live.'
+    const cited = extractCitedMarks(notes)
+    expect(cited.filter((m) => m === 'CADENCE')).toHaveLength(1)
+  })
+})
+
+describe('validateGroundedMarks', () => {
+  let warnSpy: jest.SpyInstance
+
+  beforeEach(() => {
+    // Use the imported logger mock so we can assert on warn calls
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const logger = require('@/lib/logger').default
+    warnSpy = jest.spyOn(logger, 'warn').mockImplementation(() => {})
+  })
+
+  afterEach(() => {
+    warnSpy.mockRestore()
+  })
+
+  function makeReport(notes: string): ReportData {
+    return {
+      summary: 'x',
+      candidates: [
+        {
+          name: 'Acmely',
+          style: 'invented',
+          rationale: 'r',
+          trademarkRisk: 'low',
+          trademarkNotes: notes,
+          domains: { tlds: { com: 'available' }, alternates: [] },
+        },
+      ],
+      topPicks: [{ name: 'Acmely', reasoning: 'r', nextSteps: 's' }],
+      recommendation: 'x',
+    }
+  }
+
+  function makeVerified(conflictMarks: string[]) {
+    return [
+      {
+        name: 'Acmely',
+        trademark: {
+          conflicts: conflictMarks.map((m) => ({ markText: m })),
+        },
+      },
+    ]
+  }
+
+  it('passes silently when every cited mark matches input conflicts', () => {
+    const report = makeReport('Live conflicts: CADENCE (USPTO), QUORUM (EUIPO).')
+    const verified = makeVerified(['CADENCE', 'QUORUM'])
+    validateGroundedMarks(report, verified)
+    const ungroundedCalls = warnSpy.mock.calls.filter((c) => c[0]?.event === 'ungrounded_citation')
+    expect(ungroundedCalls).toHaveLength(0)
+  })
+
+  it('warns when a cited mark does not appear in input conflicts (hallucination)', () => {
+    const report = makeReport('Live conflicts: HALLUCINATED (USPTO) blocks filing.')
+    const verified = makeVerified(['REAL-MARK'])
+    validateGroundedMarks(report, verified)
+    const ungroundedCalls = warnSpy.mock.calls.filter((c) => c[0]?.event === 'ungrounded_citation')
+    expect(ungroundedCalls).toHaveLength(1)
+    expect(ungroundedCalls[0][0].cited).toBe('HALLUCINATED')
+  })
+
+  it('warns on ANY citation when the input conflict list is empty', () => {
+    const report = makeReport('Live conflicts: INVENTED (USPTO).')
+    const verified = makeVerified([])
+    validateGroundedMarks(report, verified)
+    const ungroundedCalls = warnSpy.mock.calls.filter((c) => c[0]?.event === 'ungrounded_citation')
+    expect(ungroundedCalls.length).toBeGreaterThan(0)
+  })
+
+  it('accepts partial substring matches (cited mark is shorter than input)', () => {
+    const report = makeReport('CADENCE conflicts with the candidate.')
+    const verified = makeVerified(['CADENCE DESIGN SYSTEMS, INC.'])
+    validateGroundedMarks(report, verified)
+    const ungroundedCalls = warnSpy.mock.calls.filter((c) => c[0]?.event === 'ungrounded_citation')
+    expect(ungroundedCalls).toHaveLength(0)
+  })
+})
+
+describe('validateStyleDistribution', () => {
+  let warnSpy: jest.SpyInstance
+
+  beforeEach(() => {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const logger = require('@/lib/logger').default
+    warnSpy = jest.spyOn(logger, 'warn').mockImplementation(() => {})
+  })
+
+  afterEach(() => {
+    warnSpy.mockRestore()
+  })
+
+  function cand(style: string) {
+    return { style }
+  }
+
+  it('passes silently when the mix matches the personality', () => {
+    // Premium/refined prefers invented+compound; 5/8 match
+    const candidates = [
+      cand('invented'),
+      cand('invented'),
+      cand('compound'),
+      cand('compound'),
+      cand('compound'),
+      cand('descriptive'),
+      cand('acronym'),
+      cand('metaphorical'),
+    ]
+    validateStyleDistribution('Premium / refined', candidates)
+    expect(warnSpy.mock.calls.filter((c) => c[0]?.event === 'style_distribution_off')).toHaveLength(
+      0
+    )
+  })
+
+  it('warns when the LLM ignores the personality (below 25% floor)', () => {
+    // Premium/refined prefers invented+compound, but 0/8 match
+    const candidates = [
+      cand('descriptive'),
+      cand('descriptive'),
+      cand('metaphorical'),
+      cand('metaphorical'),
+      cand('acronym'),
+      cand('acronym'),
+      cand('metaphorical'),
+      cand('descriptive'),
+    ]
+    validateStyleDistribution('Premium / refined', candidates)
+    const offCalls = warnSpy.mock.calls.filter((c) => c[0]?.event === 'style_distribution_off')
+    expect(offCalls).toHaveLength(1)
+    expect(offCalls[0][0].ratio).toBe(0)
+  })
+
+  it('skips validation for unknown personalities (no preferred-style rule)', () => {
+    const candidates = [cand('descriptive'), cand('acronym')]
+    validateStyleDistribution('Eclectic / undefined', candidates)
+    expect(warnSpy.mock.calls.filter((c) => c[0]?.event === 'style_distribution_off')).toHaveLength(
+      0
+    )
+  })
+
+  it('does not warn when the personality-style alignment is solid', () => {
+    // Bold/contrarian prefers invented+metaphorical; 6/8 match
+    const candidates = [
+      cand('invented'),
+      cand('invented'),
+      cand('metaphorical'),
+      cand('metaphorical'),
+      cand('metaphorical'),
+      cand('invented'),
+      cand('compound'),
+      cand('descriptive'),
+    ]
+    validateStyleDistribution('Bold / contrarian', candidates)
+    expect(warnSpy.mock.calls.filter((c) => c[0]?.event === 'style_distribution_off')).toHaveLength(
+      0
     )
   })
 })

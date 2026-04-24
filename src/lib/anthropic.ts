@@ -333,6 +333,165 @@ function validateCandidateBase(c: unknown, i: number): void {
 const UNUSABLE_PREFIX = 'Domain unavailable — naming inspiration only.'
 const TAKEN_STATUSES = new Set(['taken', 'likely taken'])
 
+// Uppercase tokens that commonly appear in trademarkNotes but aren't mark
+// names — excluded from the grounding check so we don't false-positive on
+// registry/structural vocabulary.
+const MARK_CITATION_STOPWORDS = new Set([
+  'USPTO',
+  'EUIPO',
+  'WIPO',
+  'IPO',
+  'CLASS',
+  'LIVE',
+  'DEAD',
+  'ACTIVE',
+  'EXPIRED',
+  'CANCELLED',
+  'WITHDRAWN',
+  'REFUSED',
+  'REGISTERED',
+  'PUBLISHED',
+  'ACCEPTED',
+  'PENDING',
+  'REG',
+  'NO',
+  'NONE',
+  'ALL',
+  'THE',
+  'AND',
+  'OR',
+  'BUT',
+  'IN',
+  'OF',
+  'ON',
+  'FOR',
+  'BY',
+  'WITH',
+  'AT',
+  'AS',
+  'TO',
+  'VS',
+  'INC',
+  'LLC',
+  'CORP',
+  'LTD',
+  'LIMITED',
+  'GMBH',
+  'SA',
+  'AG',
+  'PLC',
+  'BV',
+  'CROSS-VERIFIED',
+  'SIGNA',
+  'CANCELLATION_PENDING',
+  'OPPOSITION_PENDING',
+])
+
+// Extracts ALL-CAPS token sequences from trademarkNotes that look like mark
+// citations (distinct from vocabulary words excluded above). Used by the
+// grounding validator to detect hallucinated mark references.
+//
+// We only match 2+ chars (single letters like "A" cause noise) and allow
+// apostrophes, ampersands, hyphens within a mark. Multi-word marks are
+// matched as a single token sequence ("APPLE INC" → "APPLE INC", caller
+// splits on space if needed).
+export function extractCitedMarks(notes: string): string[] {
+  const pattern = /\b[A-Z][A-Z0-9'&\-]{1,30}(?:\s+[A-Z][A-Z0-9'&\-]{1,30})*\b/g
+  const matches = notes.match(pattern) ?? []
+  const seen = new Set<string>()
+  const out: string[] = []
+  for (const raw of matches) {
+    const trimmed = raw.trim()
+    if (trimmed.length < 2) continue
+    // Filter stopword-only matches (single-token or compound of all stopwords)
+    const tokens = trimmed.split(/\s+/)
+    if (tokens.every((t) => MARK_CITATION_STOPWORDS.has(t))) continue
+    // Strip leading/trailing stopwords so "CADENCE INC" → "CADENCE"
+    while (tokens.length > 1 && MARK_CITATION_STOPWORDS.has(tokens[tokens.length - 1])) tokens.pop()
+    while (tokens.length > 1 && MARK_CITATION_STOPWORDS.has(tokens[0])) tokens.shift()
+    const normalized = tokens.join(' ')
+    if (normalized.length < 2) continue
+    if (seen.has(normalized)) continue
+    seen.add(normalized)
+    out.push(normalized)
+  }
+  return out
+}
+
+// Preferred naming styles per brand personality — kept in sync with the
+// weighting rules in GENERATE_CANDIDATES_PROMPT. Used by
+// validateStyleDistribution to detect when the LLM's output ignores the
+// brief's personality (grade-A discipline for dimension #7).
+const PREFERRED_STYLES_BY_PERSONALITY: Record<string, Set<string>> = {
+  'Serious / technical': new Set(['descriptive', 'compound']),
+  'Utilitarian / direct': new Set(['descriptive', 'compound']),
+  'Playful / approachable': new Set(['invented', 'metaphorical']),
+  'Bold / contrarian': new Set(['invented', 'metaphorical']),
+  'Premium / refined': new Set(['invented', 'compound']),
+}
+// 25% floor — catches egregious cases (Premium brief with 0 invented/compound)
+// without noise on the merely-uneven. Calibrate against prod telemetry later.
+const MIN_PREFERRED_STYLE_RATIO = 0.25
+
+export function validateStyleDistribution(
+  personality: string,
+  candidates: Array<{ style: string }>
+): void {
+  const preferred = PREFERRED_STYLES_BY_PERSONALITY[personality]
+  if (!preferred || candidates.length === 0) return
+  const matches = candidates.filter((c) => preferred.has(c.style)).length
+  const ratio = matches / candidates.length
+  if (ratio < MIN_PREFERRED_STYLE_RATIO) {
+    logger.warn(
+      {
+        personality,
+        preferred: Array.from(preferred),
+        matches,
+        total: candidates.length,
+        ratio: Math.round(ratio * 100) / 100,
+        event: 'style_distribution_off',
+      },
+      `candidate styles under-weight personality's preferred styles (${matches}/${candidates.length} preferred; floor ${MIN_PREFERRED_STYLE_RATIO})`
+    )
+  }
+}
+
+// Verifies that every mark cited in a candidate's trademarkNotes substring-
+// matches an actual mark from the input conflicts array. Hallucinated
+// citations (LLM invents "QUORUM ANALYTICS" when no such mark was in the
+// input) get a warn log for telemetry. We don't strip or throw yet — this
+// is a soft-detection phase to measure hallucination rate in prod before
+// escalating enforcement.
+export function validateGroundedMarks(
+  report: ReportData,
+  verified: Array<{ name: string; trademark: { conflicts: Array<{ markText: string }> } }>
+): void {
+  const conflictsByName = new Map<string, string[]>(
+    verified.map((v) => [v.name, v.trademark.conflicts.map((c) => c.markText.toUpperCase())])
+  )
+
+  for (const c of report.candidates) {
+    const inputMarks = conflictsByName.get(c.name) ?? []
+    // No input conflicts → ANY cited mark is ungrounded (a likely hallucination)
+    // With input conflicts → each cited mark must substring-match one input mark
+    const cited = extractCitedMarks(c.trademarkNotes)
+    for (const mark of cited) {
+      const grounded = inputMarks.some((input) => input.includes(mark) || mark.includes(input))
+      if (!grounded) {
+        logger.warn(
+          {
+            candidate: c.name,
+            cited: mark,
+            inputMarkCount: inputMarks.length,
+            event: 'ungrounded_citation',
+          },
+          'trademarkNotes cites a mark not in input conflicts — possible hallucination'
+        )
+      }
+    }
+  }
+}
+
 function isUnusableCandidate(c: { domains: { tlds: Record<string, string> } }): boolean {
   const statuses = Object.values(c.domains.tlds)
   if (statuses.length === 0) return false
@@ -787,7 +946,12 @@ Produce the final brand name report as JSON.`
       model: SONNET_MODEL,
       usage: response.usage,
     })
-    return parseReport(text)
+    const report = parseReport(text)
+    // Grounding check — log warn for any cited mark in trademarkNotes that
+    // doesn't appear in the verified input conflicts. Telemetry-only for now;
+    // upgrade to strip/retry once we have prod hallucination-rate data.
+    validateGroundedMarks(report, verified)
+    return report
   } catch (err) {
     rethrowAnthropicError(err)
   }
@@ -820,6 +984,11 @@ export async function generateReport(
     { requestId, niceClass, niceClassConfidence: niceClassResult.confidence },
     'inferred Nice class for trademark search'
   )
+
+  // Telemetry: warn if the LLM's style mix ignores the brief's personality.
+  // Kept as a soft check — upgrade to regenerate-on-violation once prod data
+  // shows how often this fires and how users feel about style misses.
+  validateStyleDistribution(req.personality, proposals)
 
   logProviderUsage({
     requestId,
