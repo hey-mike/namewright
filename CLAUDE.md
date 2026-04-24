@@ -23,7 +23,7 @@ CLI reuses the same secret for your device, so you set it once and it works ther
 - Next.js 16 App Router (see AGENTS.md — breaking changes from prior versions)
 - TypeScript strict mode
 - Tailwind CSS v4 (`@import "tailwindcss"` — NOT `@tailwind base/components/utilities`)
-- `@anthropic-ai/sdk` — singleton client at module level, reads `ANTHROPIC_API_KEY` automatically
+- `@anthropic-ai/sdk` — lazy singleton via factory function `client()` in `src/lib/anthropic.ts`, reads `ANTHROPIC_API_KEY` at call time (matches `stripe()` pattern so cold-start doesn't fail before `validateEnv()` runs)
 - `stripe` v22 — lazy singleton via factory function in `src/lib/stripe.ts`
 - `@vercel/kv` — Upstash Redis, 24h TTL for reports
 - `jose` v6 — HS256 JWT, 24h expiry
@@ -61,7 +61,41 @@ This applies to: Next.js, Anthropic SDK, Stripe, jose, @vercel/kv, Tailwind CSS,
 Stripe payment → `/api/auth` GET → sets HttpOnly cookie → redirect to `/results`
 Webhook exists for reliability but does NOT set cookies (goes to Stripe's server, not browser)
 
-## Environment Variables (all required at runtime)
+## Product positioning
 
+Namewright is a **naming tool + IP/domain due diligence**, not a brand strategy consultant. Positioning statements, messaging pillars, target audience articulation, tone-of-voice, and visual identity are explicitly out of scope. Customers bring implicit strategy (via description + personality + geography inputs); we consume it, we don't derive it. Keep this distinction when writing prompts, copy, or new features — reaching upward into consulting scope devalues the core wedge.
+
+See `README.md` ("Product positioning") and `docs/ROADMAP.md` (Tier 2 "Brand Kit" expansion) for the full framing.
+
+## Environment Variables
+
+**Required at runtime** (validateEnv throws if missing):
 `ANTHROPIC_API_KEY`, `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`,
-`KV_REST_API_URL`, `KV_REST_API_TOKEN`, `SESSION_SECRET`, `NEXT_PUBLIC_APP_URL`
+`KV_REST_API_URL`, `KV_REST_API_TOKEN`, `SESSION_SECRET` (≥32 chars),
+`NEXT_PUBLIC_APP_URL`
+
+**Optional integrations** (each gracefully no-ops when unset):
+
+- `SIGNA_API_KEY` — trademark search; without it, risk defaults to uncertain
+- `WHOISJSON_API_KEY` — third domain-availability source (1000/month free tier)
+- `LAUNCHDARKLY_SDK_KEY` — gates the `euipo-direct-cross-check` flag; defaults to false when unset
+- `EUIPO_CLIENT_ID`, `EUIPO_CLIENT_SECRET`, `EUIPO_AUTH_BASE_URL`, `EUIPO_API_BASE_URL` — EUIPO direct cross-check (sandbox by default)
+- `SENTRY_DSN` — error tracking
+- `SLACK_ALERT_WEBHOOK_URL` — on-call alerts for webhook sig failures, KV save failures, Anthropic credit exhaustion, EUIPO token failures
+- `RESEND_API_KEY`, `RESEND_FROM_ADDRESS` — email-me-a-copy at paywall
+- `CRON_SECRET` — Bearer token for `/api/cron/stripe-reconcile`
+
+See `.env.example` for inline comments on each.
+
+## Accuracy guardrails (anthropic.ts)
+
+LLM output is untrusted. Every response passes `validateReportData` which:
+
+- Validates field-level shape (style enum, risk enum, domain status enum, TLD normalization)
+- Enforces cross-cutting invariants (topPicks name references a real candidate, unusable candidates have UNUSABLE_PREFIX + bottom-rank + not in topPicks)
+- Auto-fixes violations silently with matching `auto_fix_*` warn logs rather than 502ing the user
+- Detects hallucinated mark citations (`validateGroundedMarks`) and style-distribution drift (`validateStyleDistribution`) as telemetry-only warnings
+- Blocks Cyrillic/Greek/emoji homoglyphs in names (`HOMOGLYPH_RE`) — retries once with explicit ASCII instruction before failing
+- Retries once on Anthropic 429 rate-limit errors (`callWithRateLimitRetry`)
+
+Don't bypass or loosen these without updating the audit log. Each one closes a measured failure mode; see `docs/ROADMAP.md` for the rationale per guardrail.
