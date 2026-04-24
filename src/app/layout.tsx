@@ -3,9 +3,9 @@ import { Analytics } from '@vercel/analytics/next'
 import './globals.css'
 
 export const metadata: Metadata = {
-  title: 'Namewright — Name it well. Own it defensibly.',
+  title: 'Namewright — Pre-incorporation brand name shortlist for founders',
   description:
-    'AI-generated brand name candidates with trademark risk assessment and domain availability.',
+    'Submit your startup brief. Get 8–12 ranked brand-name candidates screened against trademark registries, domain availability, and strategic fit — before you register a company or buy a domain.',
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

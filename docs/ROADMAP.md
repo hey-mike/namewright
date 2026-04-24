@@ -22,7 +22,20 @@
 
 ## Phase 2a (post-launch, next 3 months)
 
-- **Tier 2 "Brand Kit" at $49** — adds positioning statement + messaging pillars + tone-of-voice on top of the user's chosen name from the $19 report. Gated on week-4 user signal: only build if ≥30% of paid customers ask for "what else?" in the post-purchase feedback field. See `README.md` "Product positioning" for why this is Tier 2 not Tier 1.
+### Product upgrades from competitive review (2026-04-24)
+
+Prioritized from external review against NameCheck's Brand Spark Kit ($29). Runway is ~16–20 hr of focused work.
+
+1. **Landing reposition — "before you commit" wedge** ✓ (2026-04-24) — H1 + subline reframed around pre-incorporation shortlist vs NameCheck's single-name validation. Differentiates without crossing into consulting scope.
+2. **Domain confidence matrix** — expose RDAP / DNS / WhoisJSON per-source in the report (currently collapsed to single status). Leverages signals we already compute; concrete honesty beats NameCheck's all-"Unknown" screenshot. ~2-3 hr.
+3. **6-dimension candidate breakdown** (replaces the composite "Name Score" originally planned) — per-candidate bands across name quality / strategic fit / trademark signal / domain signal / differentiation / expansion potential. Explainable over false-precision numbers. ~4-6 hr.
+4. **Best / Safest / Boldest triad** replaces single "Top 3 overall" — re-rank same candidate set with different weightings. ~2 hr.
+5. **Rejected-names section** — surface 3–5 filtered candidates with one-line reasons. Signals "we did real work" + educates about trademark strength. ~2 hr.
+6. **Intake refinements** — company-vs-product-name checkbox (materially changes risk framing) + style-strength tooltip (educates on descriptive-vs-distinctive). ~1.5 hr.
+
+### Other Phase 2a
+
+- **Tier 2 "Deeper Due Diligence" report at $49** — extends the $19 due-diligence wedge with: additional trademark jurisdictions (IP Australia, UK IPO direct, WIPO Madrid direct), deeper phonetic/compound fuzzy scan, verifiable social handle coverage (GitHub / Reddit / Bluesky — see "Out of scope" for why the commercially-relevant ones aren't feasible), and a founder launch checklist (domain register → USPTO ITU filing → incorporation). **Explicitly does NOT include positioning statements, messaging pillars, taglines, or brand identity** — those remain permanently out of scope (see below). Gated on week-4 signal: only build if ≥30% of paid customers ask for extensions to the $19 report.
 - **Competitor input field (optional)** — intake form adds "names you want to distinguish from"; flows into generateCandidates as negative constraints. Grounds generation in user's competitive set without requiring Namewright to do positioning analysis.
 - **Tighter rationale prompt** — require each candidate's rationale to connect explicitly to (a) personality, (b) a phonetic/linguistic mechanism, (c) why the category benefits from a name like this. Closes the "arbitrary feel" gap identified in the product review.
 - **TopPicks-only domain check** — reduce `checkAllDomains` calls from 30/report to ~9/report (top 3 candidates × 3 TLDs). 70% WhoisJSON usage reduction. Keeps free tier viable through ~100 reports/month. **Do this before launch if quota becomes blocking.**
@@ -61,15 +74,30 @@ Decision per item on cleanup: KEEP if firing meaningful telemetry in prod, CUT i
 
 ## Out of scope (by design, not deferred)
 
-These would turn Namewright into a brand-strategy consultant and dilute the core wedge. Do NOT build them under the Namewright brand:
+These would turn Namewright into a brand-strategy consultant and dilute the core wedge. Do NOT build them under the Namewright brand — not at $19, not at $49, not as a "Brand Kit." If you feel tempted after a customer request or a competitive review, re-read this section first:
 
 - Brand positioning statement generation
 - Target audience persona creation
 - Messaging pillars / tone-of-voice framework
+- Taglines / slogans / copywriting
 - Visual identity direction (colors, typography, logo)
 - Go-to-market strategy
 - Competitive differentiation analysis (beyond the "names to avoid" input above)
 - Logo design
 - Brand guidelines PDF
 
-If customer signal overwhelms — build these as **Tier 2 "Brand Kit"** or a separate product, not as a Namewright feature expansion.
+The wedge is **pre-incorporation due diligence** (trademark + domain + name quality signals), not **post-incorporation brand building** (positioning + messaging + identity). Competitors who blend the two are NameCheck's Brand Spark Kit — directly copying their surface area cedes our differentiation.
+
+If customer signal overwhelms, build a **separate product** with its own positioning, not a feature expansion. Deferring the decision to "a future Brand Kit" is how this rule gets eroded.
+
+### Social handle checks — feasibility note
+
+Included in Tier 2 but only for platforms with free, reliable, official APIs: **GitHub, Reddit, Bluesky**. The commercially essential ones are deliberately excluded:
+
+- **X** — Basic API tier $200/mo minimum, no free availability endpoint
+- **Instagram / Threads** — Graph API needs app review + business verification; no availability endpoint even then
+- **TikTok** — Developer portal requires approval; no availability endpoint
+- **LinkedIn** — completely locked down
+- **Profile-URL HEAD probes** — Vercel IPs reliably blocked by Cloudflare/bot-detection on these platforms; ToS gray area; fragile
+
+Shipping unreliable probes as "verified handle availability" would erode the core "verified data" positioning. Better to ship narrow + honest than broad + flaky.

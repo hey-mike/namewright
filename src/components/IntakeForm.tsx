@@ -249,19 +249,20 @@ export function IntakeForm() {
                 lineHeight: 1.08,
               }}
             >
-              Name your brand{' '}
+              Name your brand.{' '}
               <em style={{ fontStyle: 'italic', fontWeight: 600, color: 'var(--color-accent)' }}>
-                well.
+                Before
               </em>
               <br />
-              Own it defensibly.
+              you commit.
             </h1>
             <p
               className="text-sm leading-relaxed"
-              style={{ color: 'var(--color-text-3)', maxWidth: '34ch' }}
+              style={{ color: 'var(--color-text-3)', maxWidth: '38ch' }}
             >
-              Submit a brief. We research ranked candidates against trademark registries and domain
-              availability — structured report in under a minute.
+              Submit a brief. Get 8–12 ranked name candidates screened against trademark registries,
+              domain availability, and strategic fit — before you register a company or buy a
+              domain.
             </p>
           </div>
 
