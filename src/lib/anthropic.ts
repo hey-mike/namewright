@@ -339,21 +339,24 @@ function isUnusableCandidate(c: { domains: { tlds: Record<string, string> } }): 
   return statuses.every((s) => TAKEN_STATUSES.has(s))
 }
 
-// Cross-cutting invariants enforced after per-candidate validation:
-//   - topPicks names must reference an actual candidate (P1 #5 from accuracy audit)
-//   - Unusable candidates must have UNUSABLE_PREFIX in rationale (P0 #4)
-//   - Unusable candidates must be ranked contiguously at the bottom (P0 #4)
-//   - Unusable candidates must NOT appear in topPicks (P0 #4)
-// All violations throw — the route's retry path will get a clean second
-// LLM attempt rather than ship a misranked report.
+// Cross-cutting invariants enforced after per-candidate validation.
+// Auto-fix approach: the LLM violates ranking rules ~10-20% of the time.
+// Throwing would 502 those requests — worse UX than the original bug.
+// Instead we correct the output in place and emit a `warn` so drift is
+// visible in observability.
+//
+// Non-fixable violations (name mismatch) still throw — they indicate real
+// LLM breakage that auto-correction can't heal.
 function validateReportInvariants(d: {
   candidates: Array<{
     name: string
     rationale: string
     domains: { tlds: Record<string, string> }
   }>
-  topPicks: Array<{ name: string }>
+  topPicks: Array<{ name: string; reasoning: string; nextSteps: string }>
 }): void {
+  // (1) Name-integrity check. Can't auto-fix — the LLM emitted a name that
+  // doesn't exist in candidates[], so we don't know what they meant. Throw.
   const candidateNames = new Set(d.candidates.map((c) => c.name))
   for (const [i, p] of d.topPicks.entries()) {
     if (!candidateNames.has(p.name)) {
@@ -361,25 +364,52 @@ function validateReportInvariants(d: {
     }
   }
 
-  let firstUnusableIndex = -1
-  for (const [i, c] of d.candidates.entries()) {
-    const unusable = isUnusableCandidate(c)
-    if (unusable) {
-      if (firstUnusableIndex === -1) firstUnusableIndex = i
-      if (!c.rationale.startsWith(UNUSABLE_PREFIX)) {
-        throw new Error(
-          `candidates[${i}] (${c.name}) is unusable (all TLDs taken) but rationale missing prefix "${UNUSABLE_PREFIX}"`
-        )
-      }
-      if (d.topPicks.some((p) => p.name === c.name)) {
-        throw new Error(`candidates[${i}] (${c.name}) is unusable but appears in topPicks`)
-      }
-    } else if (firstUnusableIndex !== -1) {
-      // A usable candidate appearing AFTER an unusable one violates "unusable always last"
-      throw new Error(
-        `candidates[${i}] (${c.name}) is usable but ranked after unusable candidate at position ${firstUnusableIndex}`
+  // (2) Prefix fix: prepend UNUSABLE_PREFIX to any unusable candidate whose
+  // rationale is missing it. Idempotent — already-prefixed rationales stay as-is.
+  for (const c of d.candidates) {
+    if (isUnusableCandidate(c) && !c.rationale.startsWith(UNUSABLE_PREFIX)) {
+      logger.warn(
+        { name: c.name, event: 'auto_fix_unusable_prefix' },
+        'auto-fixed missing unusable prefix on candidate rationale'
       )
+      c.rationale = `${UNUSABLE_PREFIX} ${c.rationale}`
     }
+  }
+
+  // (3) Ranking fix: stable partition so unusable candidates move to the
+  // bottom while preserving LLM-intended order within each group. We only
+  // rewrite candidates[] if a reorder actually happened.
+  const usable = d.candidates.filter((c) => !isUnusableCandidate(c))
+  const unusable = d.candidates.filter((c) => isUnusableCandidate(c))
+  const reordered = [...usable, ...unusable]
+  const orderChanged = reordered.some((c, i) => c !== d.candidates[i])
+  if (orderChanged) {
+    logger.warn(
+      {
+        event: 'auto_fix_ranking',
+        usableCount: usable.length,
+        unusableCount: unusable.length,
+      },
+      'auto-fixed candidate ranking — unusable candidates moved to bottom'
+    )
+    d.candidates.length = 0
+    d.candidates.push(...reordered)
+  }
+
+  // (4) topPicks fix: drop any unusable entries. If this leaves <3 picks
+  // we accept the shorter list rather than manufacture a replacement — the
+  // LLM's "reasoning" and "nextSteps" are specific to each name, can't
+  // synthesize a new one.
+  const unusableNames = new Set(unusable.map((c) => c.name))
+  const filteredTopPicks = d.topPicks.filter((p) => !unusableNames.has(p.name))
+  if (filteredTopPicks.length !== d.topPicks.length) {
+    const removed = d.topPicks.filter((p) => unusableNames.has(p.name)).map((p) => p.name)
+    logger.warn(
+      { event: 'auto_fix_toppicks', removed },
+      'auto-fixed topPicks — removed unusable candidates'
+    )
+    d.topPicks.length = 0
+    d.topPicks.push(...filteredTopPicks)
   }
 }
 
@@ -442,7 +472,7 @@ export function validateReportData(data: unknown): ReportData {
         rationale: string
         domains: { tlds: Record<string, string> }
       }>
-      topPicks: Array<{ name: string }>
+      topPicks: Array<{ name: string; reasoning: string; nextSteps: string }>
     }
   )
 

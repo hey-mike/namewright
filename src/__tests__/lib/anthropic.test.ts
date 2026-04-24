@@ -121,7 +121,7 @@ describe('parseReport', () => {
     expect(() => parseReport(JSON.stringify(dirty))).toThrow(/does not match any candidate/)
   })
 
-  it('throws when an unusable candidate is missing the "Domain unavailable" prefix (P0 #4)', () => {
+  it('auto-prepends "Domain unavailable" prefix when LLM omits it on an unusable candidate (P0 #4)', () => {
     const dirty = {
       ...VALID_REPORT,
       candidates: [
@@ -139,10 +139,14 @@ describe('parseReport', () => {
         },
       ],
     }
-    expect(() => parseReport(JSON.stringify(dirty))).toThrow(/missing prefix.*Domain unavailable/)
+    const result = parseReport(JSON.stringify(dirty))
+    expect(result.candidates[1].rationale).toMatch(
+      /^Domain unavailable — naming inspiration only\./
+    )
+    expect(result.candidates[1].rationale).toContain('Catchy and short')
   })
 
-  it('throws when an unusable candidate is not ranked at the bottom (P0 #4)', () => {
+  it('auto-fixes ranking by moving unusable candidates to the bottom (P0 #4)', () => {
     const unusable = {
       name: 'Doomed',
       style: 'invented' as const,
@@ -156,14 +160,15 @@ describe('parseReport', () => {
     }
     const dirty = {
       ...VALID_REPORT,
-      // Unusable in position 0 (wrong), usable TestBrand in position 1
+      // LLM put unusable at position 0; usable TestBrand at position 1
       candidates: [unusable, VALID_REPORT.candidates[0]],
       topPicks: [{ name: 'TestBrand', reasoning: 'r', nextSteps: 's' }],
     }
-    expect(() => parseReport(JSON.stringify(dirty))).toThrow(/usable but ranked after unusable/)
+    const result = parseReport(JSON.stringify(dirty))
+    expect(result.candidates.map((c) => c.name)).toEqual(['TestBrand', 'Doomed'])
   })
 
-  it('throws when an unusable candidate appears in topPicks (P0 #4)', () => {
+  it('auto-removes unusable candidates from topPicks (P0 #4)', () => {
     const unusable = {
       name: 'Doomed',
       style: 'invented' as const,
@@ -178,9 +183,13 @@ describe('parseReport', () => {
     const dirty = {
       ...VALID_REPORT,
       candidates: [VALID_REPORT.candidates[0], unusable],
-      topPicks: [{ name: 'Doomed', reasoning: 'r', nextSteps: 's' }],
+      topPicks: [
+        { name: 'Doomed', reasoning: 'r1', nextSteps: 's1' },
+        { name: 'TestBrand', reasoning: 'r2', nextSteps: 's2' },
+      ],
     }
-    expect(() => parseReport(JSON.stringify(dirty))).toThrow(/unusable but appears in topPicks/)
+    const result = parseReport(JSON.stringify(dirty))
+    expect(result.topPicks.map((p) => p.name)).toEqual(['TestBrand'])
   })
 
   it('accepts a properly ranked + prefixed unusable candidate at the bottom', () => {
