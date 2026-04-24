@@ -127,7 +127,6 @@ await fs.mkdir(OUT_DIR, { recursive: true })
 
 let totalCostUsd = 0
 const COST_CAP = 5.0
-const PER_BRIEF_CAP = 0.5
 const summary = []
 
 for (const brief of BRIEFS) {
