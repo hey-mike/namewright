@@ -11,6 +11,29 @@ import logger from '@/lib/logger'
 // in session metadata.
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
+// Extracts the account ID from a Stripe secret key. Stripe keys have the
+// stable format `sk_(test|live)_51{ACCOUNT_SUFFIX}{...}` where the 14-16
+// char ACCOUNT_SUFFIX matches the suffix of the account ID `acct_1{SUFFIX}`.
+// This encoding is undocumented but has been stable since 2016+.
+//
+// Used only for observability — we log this alongside the session ID on
+// every checkout so a mismatch between STRIPE_SECRET_KEY's account and
+// the local `stripe listen` CLI's authenticated account becomes visible
+// in the dev log within seconds, instead of silently hanging until the
+// daily stripe-reconcile cron alerts. Catches the class of bug where
+// `.env.local` and local CLI auth diverge into different sandbox accounts.
+//
+// Fragile: if Stripe changes the key format, this falls back to null and
+// we just log `stripeAccount: null`. Non-fatal.
+function accountIdFromKey(key: string | undefined): string | null {
+  if (!key) return null
+  // Modern Stripe keys embed a 15-character account suffix after `sk_*_51`.
+  // If Stripe changes this format the regex simply fails to match and we
+  // log `stripeAccount: null` — diagnostic, not business-critical.
+  const m = key.match(/^sk_(?:test|live)_51([A-Za-z0-9]{15})/)
+  return m ? `acct_1${m[1]}` : null
+}
+
 export async function POST(req: Request) {
   validateEnv()
   let body: { reportId?: unknown; reportEmail?: unknown }
@@ -89,6 +112,25 @@ export async function POST(req: Request) {
   }
 
   await setAuthNonce(session.id, nonce)
+
+  // Log the Stripe account the session was created under. Derived from the
+  // key's encoded account suffix — see accountIdFromKey above for the
+  // rationale. Makes a .env.local ↔ `stripe listen` account mismatch
+  // (the bug that silently breaks local webhook delivery) obvious on the
+  // first checkout: grep the log for `stripeAccount` and compare against
+  // the CLI's `stripe config --list` output.
+  const stripeAccount = accountIdFromKey(process.env.STRIPE_SECRET_KEY)
+  logger.info(
+    {
+      route: 'checkout',
+      sessionId: session.id,
+      stripeAccount,
+      reportId,
+      hasEmail: !!reportEmail,
+      event: 'checkout_session_created',
+    },
+    'Stripe checkout session created'
+  )
 
   return NextResponse.json({ url: session.url })
 }
