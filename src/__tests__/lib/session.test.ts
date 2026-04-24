@@ -20,4 +20,26 @@ describe('signSession / verifySession', () => {
   it('returns null for empty string', async () => {
     expect(await verifySession('')).toBeNull()
   })
+
+  it('throws when SESSION_SECRET is shorter than 32 characters', async () => {
+    const original = process.env.SESSION_SECRET
+    process.env.SESSION_SECRET = 'a'.repeat(31)
+    try {
+      await expect(signSession('report-123', true)).rejects.toThrow(/at least 32 characters/)
+    } finally {
+      process.env.SESSION_SECRET = original
+    }
+  })
+
+  it('accepts a SESSION_SECRET exactly 32 characters long', async () => {
+    const original = process.env.SESSION_SECRET
+    process.env.SESSION_SECRET = 'a'.repeat(32)
+    try {
+      const token = await signSession('report-123', true)
+      expect(typeof token).toBe('string')
+      expect(token.length).toBeGreaterThan(0)
+    } finally {
+      process.env.SESSION_SECRET = original
+    }
+  })
 })

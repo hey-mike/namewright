@@ -1,13 +1,19 @@
+jest.mock('@/lib/alerts', () => ({
+  notifySlack: jest.fn(),
+}))
+
 import {
   checkEuipoTrademark,
   checkAllEuipoTrademarks,
   _resetEuipoTokenCacheForTesting,
 } from '@/lib/euipo'
+import { notifySlack } from '@/lib/alerts'
 
 const ORIGINAL_ENV = { ...process.env }
 
 beforeEach(() => {
   _resetEuipoTokenCacheForTesting()
+  ;(notifySlack as jest.Mock).mockClear()
   process.env.EUIPO_CLIENT_ID = 'test-client-id'
   process.env.EUIPO_CLIENT_SECRET = 'test-client-secret'
   process.env.EUIPO_AUTH_BASE_URL = 'https://auth.test.example'
@@ -39,11 +45,37 @@ function tokenResponse(): Response {
   })
 }
 
-function searchResponse(data: unknown): Response {
-  return new Response(JSON.stringify({ data }), {
-    status: 200,
-    headers: { 'Content-Type': 'application/json' },
-  })
+// Matches EUIPO's real Spring-Data-pageable response shape. Test helpers
+// construct live marks (status=REGISTERED) unless the caller overrides.
+interface TestMark {
+  verbalElement?: string
+  applicationNumber?: string
+  applicationDate?: string
+  status?: string
+  niceClasses?: number[]
+  applicants?: Array<{ name?: string }>
+}
+
+function searchResponse(marks: TestMark[]): Response {
+  const trademarks = marks.map((m) => ({
+    applicationNumber: m.applicationNumber,
+    status: m.status ?? 'REGISTERED',
+    niceClasses: m.niceClasses,
+    wordMarkSpecification:
+      m.verbalElement !== undefined ? { verbalElement: m.verbalElement } : undefined,
+    applicationDate: m.applicationDate,
+    applicants: m.applicants,
+  }))
+  return new Response(
+    JSON.stringify({
+      trademarks,
+      page: 0,
+      size: 10,
+      totalElements: trademarks.length,
+      totalPages: 1,
+    }),
+    { status: 200, headers: { 'Content-Type': 'application/json' } }
+  )
 }
 
 describe('checkEuipoTrademark', () => {
@@ -78,9 +110,9 @@ describe('checkEuipoTrademark', () => {
       () =>
         searchResponse([
           {
-            mark_text: 'QUORIENT',
-            registration_number: '017123456',
-            filing_date: '2018-01-15',
+            verbalElement: 'QUORIENT',
+            applicationNumber: '017123456',
+            applicationDate: '2018-01-15',
           },
         ]),
     ])
@@ -97,11 +129,11 @@ describe('checkEuipoTrademark', () => {
       () => tokenResponse(),
       () =>
         searchResponse([
-          { mark_text: 'A' },
-          { mark_text: 'B' },
-          { mark_text: 'C' },
-          { mark_text: 'D' },
-          { mark_text: 'E' },
+          { verbalElement: 'A' },
+          { verbalElement: 'B' },
+          { verbalElement: 'C' },
+          { verbalElement: 'D' },
+          { verbalElement: 'E' },
         ]),
     ])
 
@@ -109,6 +141,23 @@ describe('checkEuipoTrademark', () => {
 
     expect(result.risk).toBe('high')
     expect(result.notes).toContain('+2 more')
+  })
+
+  it('ignores dead marks (EXPIRED, REFUSED, etc.) when scoring risk', async () => {
+    mockFetch([
+      () => tokenResponse(),
+      () =>
+        searchResponse([
+          { verbalElement: 'DEAD1', status: 'EXPIRED' },
+          { verbalElement: 'DEAD2', status: 'REFUSED' },
+          { verbalElement: 'DEAD3', status: 'WITHDRAWN' },
+        ]),
+    ])
+
+    const result = await checkEuipoTrademark('Q', 42)
+
+    // Only live marks drive risk — these are all dead so the name is clear.
+    expect(result.risk).toBe('low')
   })
 
   it('falls back to uncertain when the token endpoint fails', async () => {
@@ -173,6 +222,73 @@ describe('checkEuipoTrademark', () => {
     expect(searchHeaders.Authorization).toBe('Bearer tok-abc')
     expect(searchHeaders['X-IBM-Client-Id']).toBe('test-client-id')
   })
+
+  it('fires a Slack alert exactly once when the token endpoint fails', async () => {
+    mockFetch([
+      () =>
+        new Response(JSON.stringify({ error: 'invalid_client' }), {
+          status: 403,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+    ])
+
+    await checkEuipoTrademark('Quorient', 42)
+
+    expect(notifySlack).toHaveBeenCalledTimes(1)
+    const call = (notifySlack as jest.Mock).mock.calls[0][0] as {
+      severity: string
+      title: string
+    }
+    expect(call.title).toContain('EUIPO OAuth token fetch failing')
+    expect(call.severity).toBe('warning')
+  })
+
+  it('does NOT fire a Slack alert when only the search phase fails', async () => {
+    mockFetch([() => tokenResponse(), () => new Response('server error', { status: 500 })])
+
+    const result = await checkEuipoTrademark('Quorient', 42)
+
+    expect(notifySlack).not.toHaveBeenCalled()
+    expect(result.risk).toBe('uncertain')
+  })
+
+  it('treats CANCELLATION_PENDING as a live status that drives risk', async () => {
+    mockFetch([
+      () => tokenResponse(),
+      () =>
+        searchResponse([
+          {
+            verbalElement: 'QUORIENT',
+            applicationNumber: '017123456',
+            status: 'CANCELLATION_PENDING',
+          },
+        ]),
+    ])
+
+    const result = await checkEuipoTrademark('Q', 42)
+
+    // Single live mark = moderate per scoreFromMarks. Guards against someone
+    // removing CANCELLATION_PENDING from LIVE_STATUSES.
+    expect(result.risk).toBe('moderate')
+  })
+
+  it('treats OPPOSITION_PENDING as a live status that drives risk', async () => {
+    mockFetch([
+      () => tokenResponse(),
+      () =>
+        searchResponse([
+          {
+            verbalElement: 'QUORIENT',
+            applicationNumber: '017654321',
+            status: 'OPPOSITION_PENDING',
+          },
+        ]),
+    ])
+
+    const result = await checkEuipoTrademark('Q', 42)
+
+    expect(result.risk).toBe('moderate')
+  })
 })
 
 describe('checkAllEuipoTrademarks', () => {
@@ -180,7 +296,7 @@ describe('checkAllEuipoTrademarks', () => {
     mockFetch([
       () => tokenResponse(),
       () => searchResponse([]),
-      () => searchResponse([{ mark_text: 'BETA' }]),
+      () => searchResponse([{ verbalElement: 'BETA' }]),
     ])
 
     const result = await checkAllEuipoTrademarks([{ name: 'Alpha' }, { name: 'Beta' }], 42)

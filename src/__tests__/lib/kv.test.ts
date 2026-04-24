@@ -11,9 +11,18 @@ import type { ReportData } from '@/lib/types'
 
 const MOCK_REPORT: ReportData = {
   summary: 'Test',
-  candidates: [],
-  topPicks: [],
-  recommendation: '',
+  candidates: [
+    {
+      name: 'Brand0',
+      style: 'invented',
+      rationale: 'Strategic rationale.',
+      trademarkRisk: 'low',
+      trademarkNotes: 'No conflicts.',
+      domains: { tlds: { com: 'available' }, alternates: [] },
+    },
+  ],
+  topPicks: [{ name: 'Brand0', reasoning: 'Best.', nextSteps: 'File USPTO.' }],
+  recommendation: 'Go with Brand0.',
 }
 
 describe('saveReport', () => {
@@ -33,6 +42,13 @@ describe('getReport', () => {
   it('returns null when not found', async () => {
     ;(kv.get as jest.Mock).mockResolvedValueOnce(null)
     const result = await getReport('missing')
+    expect(result).toBeNull()
+  })
+
+  it('returns null when stored data fails schema validation (drift)', async () => {
+    // Simulate a partial write or shape from an older app version sitting in KV.
+    ;(kv.get as jest.Mock).mockResolvedValueOnce({ summary: 'stale', candidates: [] })
+    const result = await getReport('drifted')
     expect(result).toBeNull()
   })
 })

@@ -4,6 +4,8 @@ import type { SessionPayload } from './types'
 function getSecret(): Uint8Array {
   const secret = process.env.SESSION_SECRET
   if (!secret) throw new Error('SESSION_SECRET env var is required')
+  if (secret.length < 32)
+    throw new Error('SESSION_SECRET must be at least 32 characters (HS256 needs 256-bit key)')
   return new TextEncoder().encode(secret)
 }
 

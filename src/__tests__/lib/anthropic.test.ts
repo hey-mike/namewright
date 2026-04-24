@@ -122,6 +122,14 @@ describe('parseReport', () => {
     expect(parseReport(JSON.stringify(clean)).candidates[0].name).toBe('Cadence')
   })
 
+  it('throws when a topPick is malformed', () => {
+    const dirty = {
+      ...VALID_REPORT,
+      topPicks: [{ name: 123, reasoning: 'x', nextSteps: 'y' }],
+    }
+    expect(() => parseReport(JSON.stringify(dirty))).toThrow(/topPicks\[0\]\.name/)
+  })
+
   it('strips leading dots from TLD keys', () => {
     const dirty = {
       ...VALID_REPORT,
@@ -202,6 +210,28 @@ describe('generateCandidates', () => {
     await expect(
       generateCandidates({ description: 'x', personality: 'y', constraints: '', geography: 'z' })
     ).rejects.toThrow('no text block')
+  })
+
+  it('retries once on RateLimitError then succeeds', async () => {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const Anthropic = require('@anthropic-ai/sdk').default
+    const rateLimit = new Anthropic.RateLimitError('throttled')
+    // Use a tiny retry-after so the test doesn't sit on the default 30s delay.
+    rateLimit.headers = { 'retry-after': '0.001' }
+
+    mockCreate
+      .mockRejectedValueOnce(rateLimit)
+      .mockResolvedValueOnce(makeTextResponse(JSON.stringify(MOCK_PROPOSALS)))
+
+    const result = await generateCandidates({
+      description: 'x',
+      personality: 'y',
+      constraints: '',
+      geography: 'z',
+    })
+
+    expect(result).toHaveLength(8)
+    expect(mockCreate).toHaveBeenCalledTimes(2)
   })
 })
 

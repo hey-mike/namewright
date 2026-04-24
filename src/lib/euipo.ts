@@ -1,4 +1,5 @@
 import logger from './logger'
+import { notifySlack } from './alerts'
 import { officesForGeography } from './geography'
 import type { TrademarkCheckResult, TrademarkConflict } from './signa'
 
@@ -23,6 +24,10 @@ interface CachedToken {
 
 let _tokenCache: CachedToken | null = null
 let _tokenInFlight: Promise<string> | null = null
+// Debounce Slack alerts so we don't spam the channel when EUIPO auth is down
+// — one alert per cold boot is enough to page on-call.
+let _tokenAlertSentAt = 0
+const TOKEN_ALERT_DEBOUNCE_MS = 60 * 60 * 1000 // 1h
 
 interface EuipoConfig {
   clientId: string
@@ -69,7 +74,15 @@ async function fetchAccessToken(cfg: EuipoConfig): Promise<string> {
       })
 
       if (!res.ok) {
-        throw new Error(`EUIPO token request failed: ${res.status}`)
+        const err = new Error(`EUIPO token request failed: ${res.status}`) as Error & {
+          status: number
+          upstream: 'euipo'
+          phase: 'token'
+        }
+        err.status = res.status
+        err.upstream = 'euipo'
+        err.phase = 'token'
+        throw err
       }
 
       const data = (await res.json()) as { access_token?: string; expires_in?: number }
@@ -92,21 +105,44 @@ async function fetchAccessToken(cfg: EuipoConfig): Promise<string> {
   return _tokenInFlight
 }
 
-// Shape of one trademark hit from the EUIPO search API. Field names are based
-// on EUIPO's published schema; if the live API returns different names, adjust
-// here rather than at call sites.
+// Shape of one trademark hit from the EUIPO search API. Verified 2026-04-24
+// against the sandbox OpenAPI spec at
+// https://dev-sandbox.euipo.europa.eu/product/trademark-search_100/api/trademark-search
 interface EuipoMark {
-  mark_text?: string
-  registration_number?: string
-  filing_date?: string
-  owner?: string
-  nice_classes?: number[]
+  applicationNumber?: string
   status?: string
+  niceClasses?: number[]
+  wordMarkSpecification?: { verbalElement?: string }
+  applicants?: Array<{ name?: string; office?: string }>
+  applicationDate?: string
+  registrationDate?: string
+  expiryDate?: string
+  markKind?: string
+  markFeature?: string
 }
 
+// Spring Data pageable response shape — the `trademarks` array holds hits.
 interface EuipoSearchResponse {
-  data?: EuipoMark[]
-  total_count?: number
+  trademarks?: EuipoMark[]
+  totalElements?: number
+  page?: number
+  size?: number
+  totalPages?: number
+}
+
+// EUIPO status values that indicate the mark is still active on the register.
+// EXPIRED, REFUSED, WITHDRAWN, CANCELLED etc. don't drive risk.
+// Verified values seen in sandbox: ACCEPTED, REGISTERED, EXPIRED, CANCELLATION_PENDING.
+const LIVE_STATUSES = new Set([
+  'REGISTERED',
+  'ACCEPTED',
+  'PUBLISHED',
+  'OPPOSITION_PENDING',
+  'CANCELLATION_PENDING',
+])
+
+function isLiveMark(m: EuipoMark): boolean {
+  return LIVE_STATUSES.has((m.status ?? '').toUpperCase())
 }
 
 async function searchTrademarks(
@@ -115,12 +151,16 @@ async function searchTrademarks(
   query: string,
   niceClass: number
 ): Promise<EuipoSearchResponse> {
+  // EUIPO uses RSQL for filtering. verbalElement match appears case-sensitive
+  // in sandbox, so upcase the candidate for consistency. niceClasses uses the
+  // `=in=` set-membership operator.
+  const rsql = `wordMarkSpecification.verbalElement==${query.toUpperCase()} and niceClasses=in=(${niceClass})`
   const params = new URLSearchParams({
-    q: query,
-    nice_class: String(niceClass),
-    limit: '10',
+    query: rsql,
+    page: '0',
+    size: '10',
   })
-  const url = `${cfg.apiBase}/trademark-search/v1/trademarks?${params}`
+  const url = `${cfg.apiBase}/trademark-search/trademarks?${params}`
 
   const res = await fetch(url, {
     method: 'GET',
@@ -133,32 +173,40 @@ async function searchTrademarks(
   })
 
   if (!res.ok) {
-    throw new Error(`EUIPO search failed: ${res.status}`)
+    const err = new Error(`EUIPO search failed: ${res.status}`) as Error & {
+      status: number
+      upstream: 'euipo'
+      phase: 'search'
+    }
+    err.status = res.status
+    err.upstream = 'euipo'
+    err.phase = 'search'
+    throw err
   }
 
   return (await res.json()) as EuipoSearchResponse
 }
 
 function scoreFromMarks(marks: EuipoMark[]): TrademarkCheckResult['risk'] {
-  if (marks.length === 0) return 'low'
+  const live = marks.filter(isLiveMark)
+  if (live.length === 0) return 'low'
   // EUIPO direct doesn't return a relevance score, so fall back to count-based
   // bucketing. The Signa side handles severity weighting; EUIPO acts as a
   // confirming/disconfirming signal.
-  if (marks.length === 1) return 'moderate'
+  if (live.length === 1) return 'moderate'
   return 'high'
 }
 
 function toConflict(m: EuipoMark): TrademarkConflict {
-  const lowerStatus = (m.status ?? '').toLowerCase()
   return {
-    markText: m.mark_text ?? '?',
+    markText: m.wordMarkSpecification?.verbalElement ?? '?',
     office: 'euipo',
     jurisdiction: 'EU',
-    niceClasses: m.nice_classes ?? [],
-    registrationNumber: m.registration_number,
-    filingDate: m.filing_date,
-    isLive:
-      lowerStatus === '' || lowerStatus.includes('register') || lowerStatus.includes('active'),
+    niceClasses: m.niceClasses ?? [],
+    registrationNumber: m.applicationNumber,
+    filingDate: m.applicationDate,
+    ownerName: m.applicants?.[0]?.name,
+    isLive: isLiveMark(m),
     relevanceScore: 0, // EUIPO direct does not expose a relevance score
   }
 }
@@ -202,7 +250,7 @@ export async function checkEuipoTrademark(
   try {
     const token = await fetchAccessToken(cfg)
     const response = await searchTrademarks(cfg, token, candidateName, niceClass)
-    const marks = response.data ?? []
+    const marks = response.trademarks ?? []
     const conflicts = marks.map(toConflict)
     return {
       candidateName,
@@ -212,10 +260,33 @@ export async function checkEuipoTrademark(
       conflicts,
     }
   } catch (err) {
+    const e = (err ?? {}) as { status?: number; phase?: 'token' | 'search' }
     logger.warn(
-      { candidateName, err: err instanceof Error ? err.message : String(err) },
+      {
+        candidateName,
+        upstream: 'euipo',
+        status: e.status,
+        phase: e.phase,
+        err: err instanceof Error ? err.message : String(err),
+      },
       'EUIPO trademark check failed — degrading to uncertain'
     )
+    // Token fetch failures mean the whole EUIPO integration is down, not a
+    // per-candidate miss — page on-call (debounced to avoid spam).
+    if (e.phase === 'token') {
+      const now = Date.now()
+      if (now - _tokenAlertSentAt > TOKEN_ALERT_DEBOUNCE_MS) {
+        _tokenAlertSentAt = now
+        await notifySlack({
+          severity: 'warning',
+          title: 'EUIPO OAuth token fetch failing',
+          details: {
+            status: e.status,
+            error: err instanceof Error ? err.message : String(err),
+          },
+        })
+      }
+    }
     return { ...EUIPO_UNAVAILABLE, candidateName }
   }
 }
@@ -242,4 +313,5 @@ export function _resetEuipoTokenCacheForTesting(): void {
   if (process.env.NODE_ENV !== 'test') return
   _tokenCache = null
   _tokenInFlight = null
+  _tokenAlertSentAt = 0 // reset Slack-alert debounce so each test starts fresh
 }

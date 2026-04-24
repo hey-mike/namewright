@@ -1,7 +1,9 @@
+import { randomUUID } from 'crypto'
 import { NextResponse } from 'next/server'
 import Stripe from 'stripe'
 import stripe from '@/lib/stripe'
 import { validateEnv } from '@/lib/env'
+import { setAuthNonce } from '@/lib/kv'
 import logger from '@/lib/logger'
 
 // Light server-side email check. Stripe's own validation runs again at
@@ -46,6 +48,11 @@ export async function POST(req: Request) {
   // shape variant.
   const metadata: Record<string, string> = { reportId, reportEmail: reportEmail ?? '' }
 
+  // CSRF guard: bind the cookie-setting GET /api/auth call to a server-issued
+  // single-use nonce, so an attacker can't craft a top-level navigation that
+  // sets the victim's session cookie to a Stripe session they control.
+  const nonce = randomUUID()
+
   let session
   try {
     session = await stripe().checkout.sessions.create({
@@ -67,7 +74,7 @@ export async function POST(req: Request) {
       metadata,
       // Pre-fill Stripe's own email field so the user doesn't retype.
       ...(reportEmail ? { customer_email: reportEmail } : {}),
-      success_url: `${appUrl}/api/auth?report_id=${reportId}&session_id={CHECKOUT_SESSION_ID}`,
+      success_url: `${appUrl}/api/auth?report_id=${reportId}&session_id={CHECKOUT_SESSION_ID}&nonce=${nonce}`,
       cancel_url: `${appUrl}/preview?report_id=${reportId}`,
     })
   } catch (err) {
@@ -80,6 +87,8 @@ export async function POST(req: Request) {
     }
     throw err
   }
+
+  await setAuthNonce(session.id, nonce)
 
   return NextResponse.json({ url: session.url })
 }

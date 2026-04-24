@@ -23,6 +23,7 @@ const OPTIONAL_ENV_VARS = [
   'WHOISJSON_API_KEY',
   'LAUNCHDARKLY_SDK_KEY',
   'EUIPO_CLIENT_ID',
+  'EUIPO_CLIENT_SECRET',
   'SENTRY_DSN',
   'SLACK_ALERT_WEBHOOK_URL',
   'RESEND_API_KEY',
@@ -65,16 +66,19 @@ export async function GET() {
     logger.warn({ kvError: kvResult.error }, 'health check: KV ping failed')
   }
 
+  // Log enabled optional integrations server-side so operators can see them in
+  // observability without exposing the integration roster to unauthenticated
+  // callers (recon vector for attackers).
+  const optionalEnabled = Object.entries(env.optional)
+    .filter(([, present]) => present)
+    .map(([k]) => k)
+  logger.info({ optionalEnabled }, 'health check env summary')
+
   return NextResponse.json(
     {
       status,
       kv: kvResult,
-      env: {
-        missingRequired,
-        optionalEnabled: Object.entries(env.optional)
-          .filter(([, present]) => present)
-          .map(([k]) => k),
-      },
+      env: { missingRequired },
       timestamp: new Date().toISOString(),
     },
     { status: httpStatus }

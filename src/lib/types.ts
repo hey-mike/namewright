@@ -54,3 +54,34 @@ export interface SessionPayload {
   iat: number
   exp: number
 }
+
+export type TrademarkRisk = 'low' | 'moderate' | 'high' | 'uncertain'
+
+// Higher = more concerning. 'uncertain' below 'low' so a concrete result
+// always beats a missing one.
+export const RISK_RANK: Record<TrademarkRisk, number> = {
+  uncertain: -1,
+  low: 0,
+  moderate: 1,
+  high: 2,
+}
+
+// Allowlists for /api/generate boundary validation. Must stay in sync with
+// IntakeForm chip values per .claude/rules/contracts.md.
+export const PERSONALITY_VALUES = [
+  'Serious / technical',
+  'Playful / approachable',
+  'Premium / refined',
+  'Utilitarian / direct',
+  'Bold / contrarian',
+] as const
+export type Personality = (typeof PERSONALITY_VALUES)[number]
+
+export const GEOGRAPHY_VALUES = [
+  'US-first',
+  'Global',
+  'Australia / APAC',
+  'Europe',
+  'China / Asia',
+] as const
+export type Geography = (typeof GEOGRAPHY_VALUES)[number]

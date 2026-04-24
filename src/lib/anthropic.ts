@@ -6,8 +6,8 @@ import {
   TRADEMARK_UNAVAILABLE_NOTES,
   type TrademarkCheckResult,
   type TrademarkConflict,
-  type TrademarkRisk,
 } from './signa'
+import { type TrademarkRisk, RISK_RANK } from './types'
 import { checkAllEuipoTrademarks, shouldQueryEuipo } from './euipo'
 import { checkAllDomains } from './dns'
 import { isFlagEnabled } from './flags'
@@ -16,7 +16,46 @@ import logger from './logger'
 
 const SONNET_MODEL = 'claude-sonnet-4-6'
 
-const client = new Anthropic()
+// Lazy singleton — `new Anthropic()` reads ANTHROPIC_API_KEY at call time
+// rather than at module load, matching the stripe.ts factory pattern so
+// tests and serverless cold starts don't fail before env is wired up.
+let _client: Anthropic | null = null
+function client(): Anthropic {
+  if (!_client) {
+    _client = new Anthropic()
+  }
+  return _client
+}
+
+// Retries the inner call once on Anthropic 429s, honouring Retry-After when
+// the SDK exposes it. Capped at 60s so we never block a request beyond a
+// reasonable user-facing latency budget.
+async function callWithRateLimitRetry<T>(
+  fn: () => Promise<T>,
+  opts: { requestId?: string; step: string }
+): Promise<T> {
+  try {
+    return await fn()
+  } catch (err) {
+    if (!(err instanceof Anthropic.RateLimitError)) throw err
+    // SDK's `headers` is `Headers | undefined`; access via `.get` when available,
+    // fall back to record-style indexing for the test mock that uses a plain object.
+    const headers = err.headers as Headers | Record<string, string> | undefined
+    const retryAfterRaw =
+      headers && typeof (headers as Headers).get === 'function'
+        ? (headers as Headers).get('retry-after')
+        : (headers as Record<string, string> | undefined)?.['retry-after']
+    const retryAfter = Number(retryAfterRaw)
+    const delayMs =
+      Number.isFinite(retryAfter) && retryAfter > 0 ? Math.min(retryAfter * 1000, 60_000) : 30_000
+    logger.warn(
+      { requestId: opts.requestId, step: opts.step, delayMs },
+      'rate limited — retrying once'
+    )
+    await new Promise((r) => setTimeout(r, delayMs))
+    return await fn()
+  }
+}
 
 const VALID_STYLES = new Set(['descriptive', 'invented', 'metaphorical', 'acronym', 'compound'])
 const VALID_RISKS = new Set(['low', 'moderate', 'high', 'uncertain'])
@@ -30,15 +69,6 @@ const VALID_NICE_CLASSES = new Set(Array.from({ length: 45 }, (_, i) => i + 1))
 
 // LD flag gating the parallel EUIPO direct cross-check on top of Signa.
 const EUIPO_CROSS_CHECK_FLAG = 'euipo-direct-cross-check'
-
-// Risk severity used by the merge function. Higher = more concerning.
-// 'uncertain' sits below 'low' so a concrete result always beats a missing one.
-const RISK_RANK: Record<TrademarkRisk, number> = {
-  uncertain: -1,
-  low: 0,
-  moderate: 1,
-  high: 2,
-}
 
 // Conflict-first merge: if any source flags a real risk, the candidate inherits
 // the worst risk. Both clean → "cross-verified low". Both uncertain → uncertain.
@@ -130,10 +160,16 @@ async function checkAllTrademarksWithCrossSource(
     euipoResult.status === 'fulfilled' ? euipoResult.value : new Map<string, TrademarkCheckResult>()
 
   if (signaResult.status === 'rejected') {
-    logger.warn({ err: String(signaResult.reason) }, 'Signa batch failed during cross-check')
+    logger.warn(
+      { requestId, upstream: 'signa', ...upstreamFields(signaResult.reason) },
+      'Signa batch failed during cross-check'
+    )
   }
   if (euipoResult.status === 'rejected') {
-    logger.warn({ err: String(euipoResult.reason) }, 'EUIPO batch failed during cross-check')
+    logger.warn(
+      { requestId, upstream: 'euipo', ...upstreamFields(euipoResult.reason) },
+      'EUIPO batch failed during cross-check'
+    )
   }
 
   const uncertainFor = (name: string): TrademarkCheckResult => ({
@@ -185,6 +221,54 @@ function rethrowAnthropicError(err: unknown): never {
   throw err
 }
 
+export type PipelineStage =
+  | 'generate-candidates'
+  | 'synthesise-report'
+  | 'trademark-verification'
+  | 'domain-verification'
+
+// Attach a `stage` property to an error so the route boundary can log which
+// pipeline phase failed when a 502 fires. Non-enumerable-free so JSON stringify
+// sees it; preserves `instanceof Anthropic.RateLimitError` checks downstream.
+function tagStage(stage: PipelineStage, err: unknown): unknown {
+  if (err && typeof err === 'object' && !('stage' in err)) {
+    try {
+      Object.defineProperty(err, 'stage', { value: stage, enumerable: true })
+    } catch {
+      // frozen object — fall back to wrapping
+      const wrapped = new Error(err instanceof Error ? err.message : String(err)) as Error & {
+        stage: PipelineStage
+        cause: unknown
+      }
+      wrapped.stage = stage
+      wrapped.cause = err
+      return wrapped
+    }
+  }
+  return err
+}
+
+export function getErrorStage(err: unknown): PipelineStage | undefined {
+  if (err && typeof err === 'object' && 'stage' in err) {
+    return (err as { stage: PipelineStage }).stage
+  }
+  return undefined
+}
+
+// Flattens an upstream-tagged error (Signa / EUIPO) into log fields so
+// operators can filter by HTTP status without regexing the message string.
+function upstreamFields(reason: unknown): Record<string, unknown> {
+  const out: Record<string, unknown> = {
+    err: reason instanceof Error ? reason.message : String(reason),
+  }
+  if (reason && typeof reason === 'object') {
+    const r = reason as { status?: number; phase?: string }
+    if (typeof r.status === 'number') out.status = r.status
+    if (typeof r.phase === 'string') out.phase = r.phase
+  }
+  return out
+}
+
 // Strips trailing punctuation/whitespace from LLM-generated names so that
 // `${name}.${tld}` doesn't render as e.g. "quorient..com". NFKC normalizes
 // compatibility-equivalent Unicode forms (e.g. full-width Latin to ASCII).
@@ -219,7 +303,7 @@ function validateCandidateBase(c: unknown, i: number): void {
     throw new Error(`candidates[${i}].rationale missing`)
 }
 
-function validateReportData(data: unknown): ReportData {
+export function validateReportData(data: unknown): ReportData {
   if (!data || typeof data !== 'object') throw new Error('Report is not an object')
   const d = data as Record<string, unknown>
 
@@ -228,6 +312,17 @@ function validateReportData(data: unknown): ReportData {
   if (!Array.isArray(d.candidates) || d.candidates.length === 0)
     throw new Error('candidates must be a non-empty array')
   if (!Array.isArray(d.topPicks)) throw new Error('topPicks must be an array')
+
+  for (const [i, p] of (d.topPicks as unknown[]).entries()) {
+    if (!p || typeof p !== 'object') throw new Error(`topPicks[${i}] is not an object`)
+    const pick = p as Record<string, unknown>
+    if (typeof pick.name !== 'string' || !pick.name)
+      throw new Error(`topPicks[${i}].name missing or invalid`)
+    if (typeof pick.reasoning !== 'string' || !pick.reasoning)
+      throw new Error(`topPicks[${i}].reasoning missing or invalid`)
+    if (typeof pick.nextSteps !== 'string' || !pick.nextSteps)
+      throw new Error(`topPicks[${i}].nextSteps missing or invalid`)
+  }
 
   for (const [i, c] of (d.candidates as unknown[]).entries()) {
     validateCandidateBase(c, i)
@@ -304,7 +399,7 @@ export async function inferNiceClass(
   opts: { requestId?: string } = {}
 ): Promise<number> {
   try {
-    const response = await client.messages.create({
+    const response = await client().messages.create({
       model: SONNET_MODEL,
       max_tokens: 10,
       system: NICE_CLASS_INFERENCE_PROMPT,
@@ -385,12 +480,16 @@ Primary market: ${req.geography}
 Generate brand name candidates as a JSON array.`
 
   try {
-    const response = await client.messages.create({
-      model: SONNET_MODEL,
-      max_tokens: 3000,
-      system: GENERATE_CANDIDATES_PROMPT,
-      messages: [{ role: 'user', content: userMessage }],
-    })
+    const response = await callWithRateLimitRetry(
+      () =>
+        client().messages.create({
+          model: SONNET_MODEL,
+          max_tokens: 3000,
+          system: GENERATE_CANDIDATES_PROMPT,
+          messages: [{ role: 'user', content: userMessage }],
+        }),
+      { requestId: opts.requestId, step: 'generate-candidates' }
+    )
 
     const text = extractText(response.content)
     if (!text) throw new Error('Model returned no text block — likely ended on a tool call')
@@ -501,12 +600,16 @@ ${candidateLines}
 Produce the final brand name report as JSON.`
 
   try {
-    const response = await client.messages.create({
-      model: SONNET_MODEL,
-      max_tokens: 6000,
-      system: SYNTHESISE_REPORT_PROMPT,
-      messages: [{ role: 'user', content: userMessage }],
-    })
+    const response = await callWithRateLimitRetry(
+      () =>
+        client().messages.create({
+          model: SONNET_MODEL,
+          max_tokens: 6000,
+          system: SYNTHESISE_REPORT_PROMPT,
+          messages: [{ role: 'user', content: userMessage }],
+        }),
+      { requestId: opts.requestId, step: 'synthesise-report' }
+    )
 
     const text = extractText(response.content)
     if (!text) throw new Error('Model returned no text block — likely ended on a tool call')
@@ -535,10 +638,16 @@ export async function generateReport(
   // Both depend only on the brief, neither depends on the other, and
   // inference is cheap (~500ms) so the merged latency is dominated by
   // generateCandidates. inferNiceClass never throws — it falls back to 42.
-  const [proposals, niceClass] = await Promise.all([
-    generateCandidates(reqWithTlds, { requestId }),
-    inferNiceClass(reqWithTlds, { requestId }),
-  ])
+  let proposals: CandidateProposal[]
+  let niceClass: number
+  try {
+    ;[proposals, niceClass] = await Promise.all([
+      generateCandidates(reqWithTlds, { requestId }),
+      inferNiceClass(reqWithTlds, { requestId }),
+    ])
+  } catch (err) {
+    throw tagStage('generate-candidates', err)
+  }
   logger.info({ requestId, niceClass }, 'inferred Nice class for trademark search')
 
   logProviderUsage({
@@ -578,7 +687,7 @@ export async function generateReport(
     trademarkMap = trademarkResult.value
   } else {
     logger.warn(
-      { err: String(trademarkResult.reason) },
+      { requestId, ...upstreamFields(trademarkResult.reason) },
       'trademark verification failed — degrading to uncertain'
     )
   }
@@ -587,14 +696,17 @@ export async function generateReport(
     domainMap = domainResult.value
   } else {
     logger.warn(
-      { err: String(domainResult.reason) },
+      { requestId, ...upstreamFields(domainResult.reason) },
       'domain verification failed — degrading to uncertain'
     )
   }
 
   if (trademarkResult.status === 'rejected' && domainResult.status === 'rejected') {
-    throw new Error(
-      'Both trademark and domain verification failed. Report cannot be generated without research data.'
+    throw tagStage(
+      'trademark-verification',
+      new Error(
+        'Both trademark and domain verification failed. Report cannot be generated without research data.'
+      )
     )
   }
 
@@ -613,5 +725,9 @@ export async function generateReport(
     },
   }))
 
-  return synthesiseReport(reqWithTlds, verified, { requestId })
+  try {
+    return await synthesiseReport(reqWithTlds, verified, { requestId })
+  } catch (err) {
+    throw tagStage('synthesise-report', err)
+  }
 }

@@ -1,5 +1,9 @@
 import { officesForGeography } from './geography'
 import logger from './logger'
+import { type TrademarkRisk, RISK_RANK } from './types'
+
+// Re-export so downstream importers (anthropic.ts, tests) keep working.
+export type { TrademarkRisk }
 
 // Signa SDK (@signa-so/sdk v0.2.2) doesn't expose the `q` param on
 // TrademarkListParams yet, and its search.query() calls a now-sunsetted
@@ -9,8 +13,6 @@ import logger from './logger'
 
 const SIGNA_BASE_URL = 'https://api.signa.so'
 const REQUEST_TIMEOUT_MS = 10_000
-
-export type TrademarkRisk = 'low' | 'moderate' | 'high' | 'uncertain'
 
 /** Structured conflict surfaced from a registry hit. */
 export interface TrademarkConflict {
@@ -68,13 +70,6 @@ function bucketResult(r: SignaSearchResult): TrademarkRisk {
   if (r.relevance_score >= 80) return 'high'
   if (r.relevance_score >= 50) return 'moderate'
   return 'low'
-}
-
-const RISK_RANK: Record<TrademarkRisk, number> = {
-  uncertain: -1,
-  low: 0,
-  moderate: 1,
-  high: 2,
 }
 
 // Worst-wins across live results. Dead marks contribute nothing to risk.
@@ -145,9 +140,12 @@ async function searchSignaTrademarks(
 
   if (!res.ok) {
     const bodyText = await res.text().catch(() => '')
-    throw new Error(
+    const err = new Error(
       `Signa search failed: ${res.status} ${res.statusText} — ${bodyText.slice(0, 200)}`
-    )
+    ) as Error & { status: number; upstream: 'signa' }
+    err.status = res.status
+    err.upstream = 'signa'
+    throw err
   }
 
   return (await res.json()) as SignaSearchResponse
@@ -185,8 +183,17 @@ export async function checkTrademark(
       conflicts,
     }
   } catch (err) {
+    const status =
+      err && typeof err === 'object' && 'status' in err
+        ? (err as { status: number }).status
+        : undefined
     logger.warn(
-      { candidateName, err: err instanceof Error ? err.message : String(err) },
+      {
+        candidateName,
+        upstream: 'signa',
+        status,
+        err: err instanceof Error ? err.message : String(err),
+      },
       'trademark check failed — degrading to uncertain'
     )
     return {
