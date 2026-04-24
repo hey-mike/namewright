@@ -25,6 +25,8 @@ stripe login               # one-time
 
 If you don't need webhook testing locally: `npm run dev:next` runs Next.js only.
 
+**Skipping paid APIs during local debugging:** set `DEV_MOCK_PIPELINE=1` in `.env.local` to return a canned report fixture instead of calling Anthropic + Signa + EUIPO + WhoisJSON. Cuts each end-to-end test cycle from ~$0.25 and 90s to $0 and 200ms. The in-app toggle pill (top-right, dev-only) overrides per-request via the `x-dev-mock-pipeline` header. Guarded to refuse running in production even if set.
+
 ## Core scripts
 
 | Command                           | Purpose                                                                                                                          |
@@ -70,7 +72,7 @@ src/
     api/        ─ generate, checkout, auth, webhook, preview, health, cron/stripe-reconcile
   components/   ─ IntakeForm, FreePreview, FullReport, CandidateRow, ReportPdf, etc.
   lib/          ─ anthropic (pipeline + prompts), signa, euipo, dns, kv, session, alerts, cost, flags
-  __tests__/    ─ mirrors lib/ and app/api/ — 157 tests
+  __tests__/    ─ mirrors lib/ and app/api/ — 161 tests
   __mocks__/    ─ jose shim for Jest (ESM-only compat)
   proxy.ts      ─ Next.js 16 middleware (rate limiting on /api/generate)
 ```

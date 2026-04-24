@@ -85,6 +85,10 @@ See `README.md` ("Product positioning") and `docs/ROADMAP.md` (Tier 2 "Brand Kit
 - `RESEND_API_KEY`, `RESEND_FROM_ADDRESS` — email-me-a-copy at paywall
 - `CRON_SECRET` — Bearer token for `/api/cron/stripe-reconcile`
 
+**Dev-only flags** (refused in production even if set):
+
+- `DEV_MOCK_PIPELINE=1` — returns canned `ReportData` fixture from `src/lib/__fixtures__/dev-report.ts` instead of calling paid APIs. Per-request override via `x-dev-mock-pipeline: 1|0` header (UI toggle in `IntakeForm.tsx`, dev builds only).
+
 See `.env.example` for inline comments on each.
 
 ## Accuracy guardrails (anthropic.ts)
