@@ -30,6 +30,19 @@ function deliverables(tlds: string[]) {
 
 const EASING = 'cubic-bezier(0.16, 1, 0.3, 1)'
 
+// Dev-only toggle state — picks between mock fixture and real pipeline per-request.
+// Never rendered or honored in production builds (NODE_ENV === 'production').
+// See src/lib/anthropic.ts `generateReport()` for the server-side production guard.
+const DEV_MODE = process.env.NODE_ENV === 'development'
+const PIPELINE_MODE_KEY = 'nw_pipeline_mode' // 'mock' | 'real'
+type PipelineMode = 'mock' | 'real'
+
+function readPipelineModeFromStorage(): PipelineMode {
+  if (typeof window === 'undefined') return 'mock'
+  const stored = window.localStorage.getItem(PIPELINE_MODE_KEY)
+  return stored === 'real' ? 'real' : 'mock'
+}
+
 export function IntakeForm() {
   const router = useRouter()
   const [form, setForm] = useState({
@@ -42,6 +55,21 @@ export function IntakeForm() {
   const [loading, setLoading] = useState(false)
   const [loadingStep, setLoadingStep] = useState(0)
   const [error, setError] = useState<string | null>(null)
+  // Dev-only state — read from localStorage on mount so the toggle persists
+  // across page reloads within a dev session. SSR-safe hydration pattern: the
+  // server has no access to localStorage, so we start with the default and
+  // reconcile on the client after mount.
+  const [pipelineMode, setPipelineMode] = useState<PipelineMode>('mock')
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (DEV_MODE) setPipelineMode(readPipelineModeFromStorage())
+  }, [])
+
+  function togglePipelineMode() {
+    const next: PipelineMode = pipelineMode === 'mock' ? 'real' : 'mock'
+    setPipelineMode(next)
+    if (typeof window !== 'undefined') window.localStorage.setItem(PIPELINE_MODE_KEY, next)
+  }
 
   const canSubmit = form.description.trim().length > 10 && form.personality && form.geography
 
@@ -56,9 +84,15 @@ export function IntakeForm() {
     setLoading(true)
     setError(null)
     try {
+      // Build headers — attach x-dev-mock-pipeline only in dev builds.
+      // Server hard-refuses this header in production (VERCEL_ENV check).
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+      if (DEV_MODE) {
+        headers['x-dev-mock-pipeline'] = pipelineMode === 'mock' ? '1' : '0'
+      }
       const res = await fetch('/api/generate', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify(form),
       })
       const data = await res.json()
@@ -164,6 +198,41 @@ export function IntakeForm() {
 
   return (
     <main className="flex-1">
+      {DEV_MODE && (
+        // Dev-only pipeline toggle — fixed top-right, persisted in localStorage.
+        // Not rendered in production builds (NODE_ENV check). Server-side the
+        // x-dev-mock-pipeline header is hard-refused on Vercel prod.
+        <button
+          type="button"
+          onClick={togglePipelineMode}
+          aria-label={`Pipeline mode: ${pipelineMode}. Click to toggle.`}
+          title={
+            pipelineMode === 'mock'
+              ? 'Mock pipeline — returns canned fixture, zero API cost. Click for real.'
+              : 'REAL pipeline — calls Anthropic + Signa + WhoisJSON (costs money). Click for mock.'
+          }
+          style={{
+            position: 'fixed',
+            top: 12,
+            right: 12,
+            zIndex: 50,
+            padding: '6px 12px',
+            borderRadius: 999,
+            fontFamily: 'var(--font-mono, ui-monospace)',
+            fontSize: 11,
+            fontWeight: 600,
+            letterSpacing: '0.08em',
+            textTransform: 'uppercase',
+            cursor: 'pointer',
+            border: '1px solid var(--color-border)',
+            background: pipelineMode === 'mock' ? 'var(--color-input-bg)' : '#fff7c2',
+            color: pipelineMode === 'mock' ? 'var(--color-text-3)' : '#7a5c00',
+            transition: `background 0.2s cubic-bezier(0.16, 1, 0.3, 1), color 0.2s cubic-bezier(0.16, 1, 0.3, 1)`,
+          }}
+        >
+          {pipelineMode === 'mock' ? 'dev · mock' : '⚠ dev · real'}
+        </button>
+      )}
       <div className="max-w-6xl mx-auto grid md:grid-cols-[minmax(0,5fr)_minmax(0,7fr)]">
         {/* Left: hero + deliverables */}
         <div

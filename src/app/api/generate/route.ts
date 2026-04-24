@@ -84,6 +84,12 @@ export async function POST(req: Request) {
     )
   }
 
+  // Dev-only header — lets the IntakeForm toggle override DEV_MOCK_PIPELINE
+  // per-request. Production hard-refuses this header inside generateReport
+  // (VERCEL_ENV=production check), so it can never affect paying users.
+  const devMockHeader = req.headers.get('x-dev-mock-pipeline')
+  const mockPipeline = devMockHeader === '1' ? true : devMockHeader === '0' ? false : undefined
+
   log.info('report generation started')
 
   let report
@@ -96,7 +102,7 @@ export async function POST(req: Request) {
         constraints: body.constraints,
         tlds,
       },
-      { requestId }
+      { requestId, mockPipeline }
     )
   } catch (err) {
     let userError = 'Report generation failed. Please try again.'

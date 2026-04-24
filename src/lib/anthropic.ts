@@ -1035,11 +1035,40 @@ Produce the final brand name report as JSON.`
 
 export async function generateReport(
   req: GenerateRequest,
-  opts: { requestId?: string } = {}
+  opts: { requestId?: string; mockPipeline?: boolean } = {}
 ): Promise<ReportData> {
   const tlds = req.tlds?.length ? req.tlds : ['com', 'io', 'co']
   const reqWithTlds = { ...req, tlds }
   const requestId = opts.requestId ?? randomUUID()
+
+  // Dev-mode escape hatch: return a canned fixture instead of burning
+  // Anthropic + Signa + WhoisJSON quota on every local test purchase.
+  //
+  // Resolution order:
+  //   1. Production guard — if deployed to Vercel production, NEVER mock
+  //   2. Explicit opts.mockPipeline (from request header, dev-toggle UI)
+  //   3. DEV_MOCK_PIPELINE=1 env var (the default for .env.local)
+  //
+  // getDevMockReport() has its own production guard as a belt-and-suspenders.
+  const isProd = process.env.NODE_ENV === 'production' && process.env.VERCEL_ENV === 'production'
+  const useMock =
+    !isProd &&
+    (opts.mockPipeline === true ||
+      (opts.mockPipeline === undefined && process.env.DEV_MOCK_PIPELINE === '1'))
+
+  if (useMock) {
+    const { getDevMockReport } = await import('./__fixtures__/dev-report')
+    const mock = getDevMockReport()
+    logger.warn(
+      {
+        requestId,
+        event: 'dev_mock_pipeline',
+        source: opts.mockPipeline !== undefined ? 'request-header' : 'env-var',
+      },
+      'dev-mode mock pipeline active — returning canned fixture, no LLM/Signa/WhoisJSON calls made'
+    )
+    return mock
+  }
 
   // Step 1: candidate generation and Nice class inference run in parallel.
   // Both depend only on the brief, neither depends on the other, and
