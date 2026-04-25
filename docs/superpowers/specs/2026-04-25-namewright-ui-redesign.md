@@ -25,14 +25,13 @@ The interface is confident, modern, and highly engineered, deliberately avoiding
 - **Pills & Indicators:** The only elements permitted to have full rounding (`rounded-full`). Used to differentiate functional data (like "Top Pick" tags) from structural layout.
 - **Buttons:** Solid Charcoal or International Orange. Flat, no outer glow. Tactile push feedback on active state (`transform: translateY(0) scale(0.98)`).
 
-## 5. Wait-Time UX: The Command Center
+## 5. Wait-Time UX: The Split View with Granular Logging
 
 **The 90-Second Wait Mitigation**
-To manage the ~90-second report generation time without losing user trust, the loading state will be an **Active Pipeline Visualization**.
+To manage the ~90-second report generation time without losing user trust, the loading state will be a **Split View (Editorial + Technical)**.
 
-- **Technical Log-Driven View:** Displays a real-time, monospace log of the rigorous work the agent is performing (e.g., "Generated 12 candidate names [✓]", "Cross-checking USPTO... [~]").
-- **Pulsing Indicators:** Active steps pulse or shimmer to indicate live processing.
-- **Progress Bar:** A smooth progress bar tracking the pipeline phases (`Generating candidates` → `Checking trademarks` → `Checking domains` → `Synthesising report`).
+- **Left Side - Immersive Terminal:** Displays a real-time, highly granular monospace log of the rigorous work the agent is performing (streaming every domain checked, every trademark class scanned). Includes pulsing indicators for active steps and a smooth progress bar tracking the pipeline phases.
+- **Right Side - Editorial Content:** Cycles through short, high-value branding tips (e.g., "Descriptive vs. Distinctive", "Why descriptive names are harder to trademark") to provide engaging reading material while the pipeline runs.
 
 ## 6. Report Visuals & Layout
 
