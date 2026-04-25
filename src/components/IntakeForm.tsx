@@ -19,17 +19,6 @@ const PIPELINE_STEPS = [
   'Synthesising report',
 ]
 
-function deliverables(tlds: string[]) {
-  return [
-    '8–12 ranked name candidates',
-    'Trademark risk per candidate',
-    `Domain availability (${tlds.map((t) => `.${t}`).join(' ')})`,
-    'Top 3 picks with next steps',
-  ]
-}
-
-const EASING = 'cubic-bezier(0.16, 1, 0.3, 1)'
-
 // Dev-only toggle state — picks between mock fixture and real pipeline per-request.
 // Never rendered or honored in production builds (NODE_ENV === 'production').
 // See src/lib/anthropic.ts `generateReport()` for the server-side production guard.
@@ -128,101 +117,91 @@ export function IntakeForm() {
     }
   }
 
-  const inputBase: React.CSSProperties = {
-    fontFamily: 'inherit',
-    color: 'var(--color-text-2)',
-    background: 'var(--color-input-bg)',
-    border: '1px solid var(--color-border)',
-    outline: 'none',
-    transition: `border-color 0.2s ${EASING}, box-shadow 0.2s ${EASING}`,
-  }
-
-  function onFocus(e: React.FocusEvent<HTMLInputElement | HTMLTextAreaElement>) {
-    e.target.style.borderColor = 'var(--color-accent)'
-    e.target.style.boxShadow = '0 0 0 3px var(--color-focus-ring)'
-  }
-  function onBlur(e: React.FocusEvent<HTMLInputElement | HTMLTextAreaElement>) {
-    e.target.style.borderColor = 'var(--color-border)'
-    e.target.style.boxShadow = 'none'
-  }
-
   if (loading) {
+    // Calculate progress percentage based on loadingStep
+    const progress = Math.min(100, Math.max(10, loadingStep * 25 + 15))
+
     return (
-      <main className="flex-1 flex items-start justify-start px-6 md:px-10 pt-20 fade-in">
-        <div className="max-w-xs w-full">
-          <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+      <div className="w-full h-full flex flex-col md:flex-row border border-[#EAEAEA] bg-white min-h-[600px]">
+        {/* Left: Immersive Terminal */}
+        <div className="w-full md:w-3/5 bg-[#111111] text-[#EAEAEA] p-8 md:p-12 flex flex-col relative overflow-hidden">
+          <div className="flex justify-between items-center border-b border-zinc-800 pb-4 mb-6">
+            <span className="mono text-[10px] font-bold uppercase tracking-widest text-[#FF4F00]">
+              Pipeline Active
+            </span>
+            <span className="mono text-xs text-zinc-500">{progress}%</span>
+          </div>
+
+          <div className="w-full h-1 bg-zinc-800 rounded-full overflow-hidden mb-8">
+            <div
+              className="h-full bg-[#FF4F00] transition-all duration-1000 ease-out"
+              style={{ width: `${progress}%` }}
+            ></div>
+          </div>
+
+          {/* Terminal Log Stream */}
           <div
-            aria-hidden="true"
+            className="flex-1 font-mono text-[11px] leading-relaxed space-y-2 overflow-y-auto"
             style={{
-              width: 18,
-              height: 18,
-              border: '1.5px solid var(--color-accent-lt)',
-              borderTopColor: 'var(--color-accent)',
-              borderRadius: '50%',
-              animation: 'spin 0.75s linear infinite',
-              marginBottom: '2.5rem',
+              maskImage:
+                'linear-gradient(to bottom, transparent, black 10%, black 90%, transparent)',
+              WebkitMaskImage:
+                'linear-gradient(to bottom, transparent, black 10%, black 90%, transparent)',
             }}
-          />
-          <p
-            className="mono text-[10px] tracking-widest uppercase mb-6"
-            style={{ color: 'var(--color-text-4)' }}
           >
-            Research in progress
-          </p>
-          <ul className="space-y-5">
-            {PIPELINE_STEPS.map((step, i) => {
-              const done = i < loadingStep
-              const active = i === loadingStep
-              return (
-                <li
-                  key={step}
-                  className="flex items-center gap-4"
-                  style={{
-                    transition: `opacity 0.35s ${EASING}`,
-                    opacity: done ? 0.3 : active ? 1 : 0.18,
-                  }}
-                >
-                  <div
-                    aria-hidden="true"
-                    style={{
-                      width: 5,
-                      height: 5,
-                      borderRadius: '50%',
-                      background: done
-                        ? 'var(--color-text-4)'
-                        : active
-                          ? 'var(--color-accent)'
-                          : 'var(--color-border-mid)',
-                      flexShrink: 0,
-                      transition: `background 0.35s ${EASING}`,
-                    }}
-                  />
-                  <span
-                    className="display text-2xl font-semibold"
-                    style={{
-                      letterSpacing: '-0.025em',
-                      color: active ? 'var(--color-text-1)' : 'var(--color-text-3)',
-                      transition: `color 0.35s ${EASING}`,
-                      textDecoration: done ? 'line-through' : 'none',
-                    }}
-                  >
-                    {step}
-                  </span>
-                </li>
-              )
-            })}
-          </ul>
+            <div className="text-zinc-500">[System] Initializing pipeline...</div>
+            {loadingStep >= 0 && (
+              <div className="text-emerald-500">[Agent] Synthesizing brief criteria.</div>
+            )}
+            {loadingStep >= 1 && (
+              <div className="text-zinc-400">[Agent] Generating candidate batch...</div>
+            )}
+            {loadingStep >= 1 && (
+              <div className="text-emerald-500">
+                [Agent] 12 candidates generated. Initiating parallel verification.
+              </div>
+            )}
+            {loadingStep >= 2 && (
+              <div className="text-zinc-400">[Signa] Querying USPTO TESS database...</div>
+            )}
+            {loadingStep >= 2 && (
+              <div className="text-emerald-500">[Signa] Cross-referencing EUIPO records...</div>
+            )}
+            {loadingStep >= 3 && (
+              <div className="text-zinc-400">[DNS] Probing Layer 1 availability...</div>
+            )}
+            {loadingStep >= 3 && (
+              <div className="text-zinc-400">[RDAP] Resolving Layer 2 WHOIS...</div>
+            )}
+
+            <div className="flex gap-2 text-white font-bold animate-pulse-fast mt-4">
+              <span className="text-[#FF4F00]">█</span>
+              <span>{PIPELINE_STEPS[loadingStep] || 'Finalizing...'}</span>
+            </div>
+          </div>
         </div>
-      </main>
+
+        {/* Right: Editorial Content */}
+        <div className="w-full md:w-2/5 p-8 md:p-12 flex flex-col justify-center bg-[#FBFBFA] border-l border-[#EAEAEA]">
+          <span className="mono text-[10px] uppercase tracking-widest text-[#787774] mb-4">
+            While you wait
+          </span>
+          <h3 className="serif text-3xl font-medium leading-tight mb-4 text-[#111111]">
+            Descriptive vs. Distinctive
+          </h3>
+          <p className="text-sm text-[#787774] leading-relaxed">
+            Names that literally describe what you do (like &quot;FastMail&quot;) are incredibly
+            difficult to trademark. The strongest brands use distinctive, arbitrary, or coined words
+            (like &quot;Apple&quot; for computers).
+          </p>
+        </div>
+      </div>
     )
   }
 
   return (
-    <main className="flex-1">
+    <>
       {DEV_MODE && (
-        // Dev-only pipeline toggle — fixed top-right, persisted in localStorage.
-        // Not rendered in production builds (NODE_ENV check). Server-side the
-        // x-dev-mock-pipeline header is hard-refused on Vercel prod.
         <button
           type="button"
           onClick={togglePipelineMode}
@@ -255,190 +234,79 @@ export function IntakeForm() {
           {pipelineMode === 'mock' ? 'dev · mock' : '⚠ dev · real'}
         </button>
       )}
-      <div className="max-w-6xl mx-auto grid md:grid-cols-[minmax(0,5fr)_minmax(0,7fr)]">
-        {/* Left: hero + deliverables */}
-        <div
-          className="px-6 md:px-10 py-12 md:py-20 flex flex-col gap-10 md:border-r fade-in"
-          style={{ borderColor: 'var(--color-border)' }}
-        >
-          <div>
-            <h1
-              className="display font-light mb-5"
-              style={{
-                fontSize: 'clamp(1.9rem, 3.6vw, 2.9rem)',
-                letterSpacing: '-0.025em',
-                color: 'var(--color-text-1)',
-                lineHeight: 1.08,
-              }}
-            >
-              Name your brand.{' '}
-              <em style={{ fontStyle: 'italic', fontWeight: 600, color: 'var(--color-accent)' }}>
-                Before
-              </em>
-              <br />
-              you commit.
-            </h1>
-            <p
-              className="text-sm leading-relaxed"
-              style={{ color: 'var(--color-text-3)', maxWidth: '38ch' }}
-            >
-              Submit a brief. Get 8–12 ranked name candidates screened against trademark registries,
-              domain availability, and strategic fit — before you register a company or buy a
-              domain.
-            </p>
-          </div>
 
-          <div className="pt-8" style={{ borderTop: '1px solid var(--color-border)' }}>
-            <p
-              className="mono text-[10px] tracking-widest uppercase mb-5"
-              style={{ color: 'var(--color-text-4)' }}
-            >
-              Each report includes
-            </p>
-            <ul className="space-y-3.5">
-              {deliverables(form.tlds).map((item) => (
-                <li key={item} className="flex items-start gap-3">
-                  <svg
-                    width="11"
-                    height="11"
-                    viewBox="0 0 11 11"
-                    fill="none"
-                    style={{ marginTop: 4, flexShrink: 0 }}
-                    aria-hidden="true"
-                  >
-                    <path
-                      d="M1.5 5.5l3 3 5-5"
-                      stroke="var(--color-accent)"
-                      strokeWidth="1.3"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    />
-                  </svg>
-                  <span className="text-sm" style={{ color: 'var(--color-text-3)' }}>
-                    {item}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          </div>
-
-          <div className="flex flex-col gap-2 md:mt-auto">
-            <p
-              className="mono text-[10px] tracking-widest uppercase mb-1"
-              style={{ color: 'var(--color-text-4)' }}
-            >
-              Registries searched
-            </p>
-            {['USPTO', 'EUIPO'].map((reg) => (
-              <div key={reg} className="flex items-center gap-2.5">
-                <div
-                  aria-hidden="true"
-                  style={{
-                    width: 5,
-                    height: 5,
-                    borderRadius: '50%',
-                    background: 'var(--color-accent)',
-                    opacity: 0.45,
-                    flexShrink: 0,
-                  }}
-                />
-                <span className="mono text-[10px] tracking-widest ink-softer uppercase">{reg}</span>
-              </div>
-            ))}
-          </div>
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-16">
+        <div className="col-span-1 lg:col-span-5 space-y-6">
+          <h1 className="serif text-5xl md:text-7xl font-medium tracking-tight leading-[0.9] text-[#111111]">
+            Name your brand.
+            <br />
+            <span className="italic text-[#787774]">Before you commit.</span>
+          </h1>
+          <p className="text-lg text-[#787774] leading-relaxed max-w-md">
+            Submit a brief, get 8–12 ranked name candidates with preliminary trademark screening and
+            domain availability.
+          </p>
         </div>
 
-        {/* Right: form */}
-        <div className="px-6 md:px-10 md:pl-14 py-12 md:py-20">
-          <div className="max-w-lg stagger space-y-8">
-            <div>
-              <div className="flex items-baseline gap-3 mb-2">
-                <span className="mono text-xs ink-softer tabular-nums">01</span>
-                <label
-                  className="text-sm font-semibold"
-                  style={{ color: 'var(--color-text-1)', letterSpacing: '-0.01em' }}
-                  htmlFor="desc"
-                >
-                  Describe your product
-                </label>
-              </div>
+        <div className="col-span-1 lg:col-span-7">
+          <div className="card-container p-8 md:p-12 space-y-10">
+            {/* 01 / Description & Name Type */}
+            <div className="space-y-3">
+              <label className="mono text-[10px] font-bold uppercase tracking-widest text-[#FF4F00]">
+                01 / Description
+              </label>
               <textarea
-                id="desc"
                 value={form.description}
                 onChange={(e) => setForm({ ...form, description: e.target.value })}
-                placeholder="Product category, core function, who it's for. A sentence or two."
-                rows={3}
-                className="w-full p-3 text-sm rounded-md"
-                style={{ ...inputBase, resize: 'none', lineHeight: 1.6 }}
-                onFocus={onFocus}
-                onBlur={onBlur}
+                placeholder="What are you building? Who is it for?"
+                className="w-full bg-[#FBFBFA] border border-[#EAEAEA] p-4 font-sans text-sm focus:border-[#FF4F00] focus:ring-1 focus:ring-[#FF4F00] outline-none transition-all resize-none min-h-[120px]"
               />
-              <p className="mono text-[11px] mt-1.5 ink-softer">
-                Be specific about the audience and job-to-be-done.
-              </p>
-              <div className="mt-4">
-                <p
-                  className="text-xs mb-2"
-                  style={{ color: 'var(--color-text-2)', letterSpacing: '-0.005em' }}
-                >
-                  Is this a name for:
-                </p>
-                <div className="flex flex-wrap gap-4" role="radiogroup" aria-label="Name type">
-                  {(
-                    [
-                      { value: 'company', label: 'a company' },
-                      { value: 'product', label: 'a product within an existing company' },
-                    ] as const
-                  ).map((opt) => {
-                    const checked = form.nameType === opt.value
-                    return (
-                      <label
-                        key={opt.value}
-                        className="flex items-center gap-2 cursor-pointer text-sm"
-                        style={{ color: 'var(--color-text-2)' }}
-                      >
-                        <input
-                          type="radio"
-                          name="nameType"
-                          value={opt.value}
-                          checked={checked}
-                          onChange={() => setForm({ ...form, nameType: opt.value })}
-                          style={{ accentColor: 'var(--color-accent)' }}
-                        />
-                        <span>{opt.label}</span>
-                      </label>
-                    )
-                  })}
-                </div>
+
+              <div className="flex flex-wrap gap-2 mt-4">
+                {(
+                  [
+                    { value: 'company', label: 'A company' },
+                    { value: 'product', label: 'A product' },
+                  ] as const
+                ).map((opt) => {
+                  const selected = form.nameType === opt.value
+                  return (
+                    <button
+                      key={opt.value}
+                      type="button"
+                      onClick={() => setForm({ ...form, nameType: opt.value })}
+                      className={`px-4 py-2 text-xs font-medium border transition-colors ${
+                        selected
+                          ? 'bg-[#111111] text-white border-[#111111]'
+                          : 'bg-white text-[#787774] border-[#EAEAEA] hover:border-[#111111] hover:text-[#111111]'
+                      }`}
+                    >
+                      {opt.label}
+                    </button>
+                  )
+                })}
               </div>
             </div>
 
-            <div>
-              <div className="flex items-baseline gap-3 mb-3">
-                <span className="mono text-xs ink-softer tabular-nums">02</span>
-                <span
-                  className="text-sm font-semibold"
-                  style={{ color: 'var(--color-text-1)', letterSpacing: '-0.01em' }}
-                >
-                  Brand personality
-                </span>
+            {/* 02 / Personality */}
+            <div className="space-y-3">
+              <div className="flex items-center gap-2">
+                <label className="mono text-[10px] font-bold uppercase tracking-widest text-[#FF4F00]">
+                  02 / Personality
+                </label>
                 <span data-personality-info className="relative inline-flex items-center">
                   <button
                     type="button"
                     aria-label="Why personality matters for trademark strength"
                     aria-expanded={personalityInfoOpen}
                     onClick={() => setPersonalityInfoOpen((v) => !v)}
-                    className="inline-flex items-center justify-center rounded-full"
+                    className="inline-flex items-center justify-center rounded-full bg-white border border-[#EAEAEA] text-[#787774] hover:border-[#111111] hover:text-[#111111] transition-colors"
                     style={{
                       width: 16,
                       height: 16,
-                      border: '1px solid var(--color-border-mid)',
-                      color: 'var(--color-text-3)',
-                      background: 'var(--color-input-bg)',
                       fontSize: 10,
                       fontWeight: 600,
                       lineHeight: 1,
-                      cursor: 'pointer',
                       fontFamily: 'var(--font-mono, ui-monospace)',
                     }}
                   >
@@ -447,21 +315,7 @@ export function IntakeForm() {
                   {personalityInfoOpen && (
                     <span
                       role="tooltip"
-                      style={{
-                        position: 'absolute',
-                        top: 'calc(100% + 8px)',
-                        left: 0,
-                        zIndex: 10,
-                        width: 280,
-                        padding: '10px 12px',
-                        borderRadius: 6,
-                        border: '1px solid var(--color-border)',
-                        background: 'var(--color-input-bg)',
-                        color: 'var(--color-text-2)',
-                        fontSize: 12,
-                        lineHeight: 1.5,
-                        boxShadow: '0 4px 12px var(--color-shadow-soft)',
-                      }}
+                      className="absolute top-[calc(100%+8px)] left-0 z-10 w-[280px] p-3 rounded-sm border border-[#EAEAEA] bg-white text-xs leading-relaxed text-[#787774] shadow-[0_4px_20px_rgba(0,0,0,0.03)]"
                     >
                       Names that <em>describe</em> what you do (FastPay, QuickShip) are weak
                       trademarks. Names that <em>evoke</em> without describing (Stripe, Cloudflare)
@@ -470,23 +324,17 @@ export function IntakeForm() {
                   )}
                 </span>
               </div>
-              <div className="flex flex-wrap gap-2" role="group" aria-label="Brand personality">
+              <div className="flex flex-wrap gap-2">
                 {PERSONALITIES.map((p) => (
                   <button
                     key={p}
                     type="button"
                     onClick={() => setForm({ ...form, personality: p })}
-                    className={`chip px-4 py-2 text-xs font-medium rounded-md border ${form.personality === p ? 'chip-active' : ''}`}
-                    style={
-                      form.personality !== p
-                        ? {
-                            borderColor: 'var(--color-border-mid)',
-                            color: 'var(--color-text-2)',
-                            background: 'var(--color-input-bg)',
-                          }
-                        : {}
-                    }
-                    aria-pressed={form.personality === p}
+                    className={`px-4 py-2 text-xs font-medium border transition-colors ${
+                      form.personality === p
+                        ? 'bg-[#111111] text-white border-[#111111]'
+                        : 'bg-white text-[#787774] border-[#EAEAEA] hover:border-[#111111] hover:text-[#111111]'
+                    }`}
                   >
                     {p}
                   </button>
@@ -494,57 +342,37 @@ export function IntakeForm() {
               </div>
             </div>
 
-            <div>
-              <div className="flex items-baseline gap-3 mb-2">
-                <span className="mono text-xs ink-softer tabular-nums">03</span>
-                <label
-                  className="text-sm font-semibold"
-                  style={{ color: 'var(--color-text-1)', letterSpacing: '-0.01em' }}
-                  htmlFor="constraints"
-                >
-                  Constraints <span className="font-normal ink-softer text-xs">(optional)</span>
-                </label>
-              </div>
+            {/* 03 / Constraints */}
+            <div className="space-y-3">
+              <label className="mono text-[10px] font-bold uppercase tracking-widest text-[#FF4F00]">
+                03 / Constraints{' '}
+                <span className="text-[#787774] font-normal lowercase">(optional)</span>
+              </label>
               <input
                 type="text"
-                id="constraints"
                 value={form.constraints}
                 onChange={(e) => setForm({ ...form, constraints: e.target.value })}
                 placeholder="e.g. Under 8 characters. Must be pronounceable in Mandarin."
-                className="w-full p-3 text-sm rounded-md"
-                style={inputBase}
-                onFocus={onFocus}
-                onBlur={onBlur}
+                className="w-full bg-[#FBFBFA] border border-[#EAEAEA] p-4 font-sans text-sm focus:border-[#FF4F00] focus:ring-1 focus:ring-[#FF4F00] outline-none transition-all"
               />
             </div>
 
-            <div>
-              <div className="flex items-baseline gap-3 mb-3">
-                <span className="mono text-xs ink-softer tabular-nums">04</span>
-                <span
-                  className="text-sm font-semibold"
-                  style={{ color: 'var(--color-text-1)', letterSpacing: '-0.01em' }}
-                >
-                  Primary market
-                </span>
-              </div>
-              <div className="flex flex-wrap gap-2" role="group" aria-label="Primary market">
+            {/* 04 / Primary Market */}
+            <div className="space-y-3">
+              <label className="mono text-[10px] font-bold uppercase tracking-widest text-[#FF4F00]">
+                04 / Primary Market
+              </label>
+              <div className="flex flex-wrap gap-2">
                 {GEOGRAPHIES.map((g) => (
                   <button
                     key={g}
                     type="button"
                     onClick={() => setForm({ ...form, geography: g })}
-                    className={`chip px-4 py-2 text-xs font-medium rounded-md border ${form.geography === g ? 'chip-active' : ''}`}
-                    style={
-                      form.geography !== g
-                        ? {
-                            borderColor: 'var(--color-border-mid)',
-                            color: 'var(--color-text-2)',
-                            background: 'var(--color-input-bg)',
-                          }
-                        : {}
-                    }
-                    aria-pressed={form.geography === g}
+                    className={`px-4 py-2 text-xs font-medium border transition-colors ${
+                      form.geography === g
+                        ? 'bg-[#111111] text-white border-[#111111]'
+                        : 'bg-white text-[#787774] border-[#EAEAEA] hover:border-[#111111] hover:text-[#111111]'
+                    }`}
                   >
                     {g}
                   </button>
@@ -552,18 +380,13 @@ export function IntakeForm() {
               </div>
             </div>
 
-            <div>
-              <div className="flex items-baseline gap-3 mb-3">
-                <span className="mono text-xs ink-softer tabular-nums">05</span>
-                <span
-                  className="text-sm font-semibold"
-                  style={{ color: 'var(--color-text-1)', letterSpacing: '-0.01em' }}
-                >
-                  Domain extensions{' '}
-                  <span className="font-normal ink-softer text-xs">(up to 5)</span>
-                </span>
-              </div>
-              <div className="flex flex-wrap gap-2" role="group" aria-label="Domain extensions">
+            {/* 05 / Domain Extensions */}
+            <div className="space-y-3">
+              <label className="mono text-[10px] font-bold uppercase tracking-widest text-[#FF4F00]">
+                05 / Domain Extensions{' '}
+                <span className="text-[#787774] font-normal lowercase">(up to 5)</span>
+              </label>
+              <div className="flex flex-wrap gap-2">
                 {SUPPORTED_TLDS.map((tld) => {
                   const selected = form.tlds.includes(tld)
                   return (
@@ -579,17 +402,11 @@ export function IntakeForm() {
                           setForm({ ...form, tlds: [...form.tlds, tld] })
                         }
                       }}
-                      className={`chip px-3 py-1.5 text-xs font-medium rounded-md border mono ${selected ? 'chip-active' : ''}`}
-                      style={
-                        !selected
-                          ? {
-                              borderColor: 'var(--color-border-mid)',
-                              color: 'var(--color-text-2)',
-                              background: 'var(--color-input-bg)',
-                            }
-                          : {}
-                      }
-                      aria-pressed={selected}
+                      className={`px-4 py-2 text-xs font-medium border transition-colors mono ${
+                        selected
+                          ? 'bg-[#111111] text-white border-[#111111]'
+                          : 'bg-white text-[#787774] border-[#EAEAEA] hover:border-[#111111] hover:text-[#111111]'
+                      }`}
                     >
                       .{tld}
                     </button>
@@ -598,45 +415,16 @@ export function IntakeForm() {
               </div>
             </div>
 
-            {error && (
-              <p className="mono text-xs" style={{ color: 'var(--color-error)' }}>
-                {error}
-              </p>
-            )}
-
-            <div className="pt-6" style={{ borderTop: '1px solid var(--color-border)' }}>
-              <p
-                className="text-sm mb-5"
-                style={{
-                  color: 'var(--color-text-2)',
-                  lineHeight: 1.55,
-                  fontSize: 14,
-                  maxWidth: '52ch',
-                }}
-              >
-                Preliminary screening of trademark + domain signals. Not legal advice or trademark
-                clearance — take the report to a qualified attorney before committing.
-              </p>
-              <button
-                onClick={handleSubmit}
-                disabled={!canSubmit}
-                className="btn-primary px-6 py-3 display text-base font-semibold rounded-md inline-flex items-center gap-2"
-              >
-                Search registries
-                <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
-                  <path
-                    d="M2.5 7h9M8 3.5 11.5 7 8 10.5"
-                    stroke="currentColor"
-                    strokeWidth="1.5"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                </svg>
+            {/* Submit Button & Error */}
+            <div className="pt-4 border-t border-[#EAEAEA]">
+              {error && <p className="mono text-xs text-red-500 mb-4">{error}</p>}
+              <button onClick={handleSubmit} disabled={!canSubmit} className="btn-primary w-full">
+                Generate Report ($19)
               </button>
             </div>
           </div>
         </div>
       </div>
-    </main>
+    </>
   )
 }
