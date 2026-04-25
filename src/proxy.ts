@@ -3,24 +3,40 @@ import type { NextRequest } from 'next/server'
 import { kv } from '@vercel/kv'
 import logger from '@/lib/logger'
 
-const RATE_LIMIT_WINDOW_S = 60
-const RATE_LIMIT_MAX = 5
+type RouteLimit = {
+  // KV key prefix; counters are per-route so limits don't share buckets.
+  bucket: string
+  windowSeconds: number
+  max: number
+}
+
+// Per-route rate limits. Keep this list small and the matcher in sync below.
+const ROUTE_LIMITS: Record<string, RouteLimit> = {
+  '/api/generate': { bucket: 'generate', windowSeconds: 60, max: 5 },
+  '/api/checkout': { bucket: 'checkout', windowSeconds: 60, max: 10 },
+  '/api/preview': { bucket: 'preview', windowSeconds: 60, max: 30 },
+}
 
 export async function proxy(request: NextRequest) {
+  const limit = ROUTE_LIMITS[request.nextUrl.pathname]
+  if (!limit) {
+    return NextResponse.next()
+  }
+
   const ip =
     request.headers.get('cf-connecting-ip') ??
     request.headers.get('x-forwarded-for')?.split(',')[0].trim() ??
     'unknown'
 
-  const key = `rl:generate:${ip}`
+  const key = `rl:${limit.bucket}:${ip}`
 
   try {
     const count = await kv.incr(key)
     if (count === 1) {
-      await kv.expire(key, RATE_LIMIT_WINDOW_S)
+      await kv.expire(key, limit.windowSeconds)
     }
 
-    if (count > RATE_LIMIT_MAX) {
+    if (count > limit.max) {
       const ttl = await kv.ttl(key)
       return new NextResponse('Too Many Requests', {
         status: 429,
@@ -41,5 +57,5 @@ export async function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: '/api/generate',
+  matcher: ['/api/generate', '/api/checkout', '/api/preview'],
 }
