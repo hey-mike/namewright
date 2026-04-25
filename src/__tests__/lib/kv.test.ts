@@ -26,9 +26,9 @@ const MOCK_REPORT: ReportData = {
 }
 
 describe('saveReport', () => {
-  it('stores report with 24-hour TTL', async () => {
+  it('stores report with 7-day TTL', async () => {
     await saveReport('abc123', MOCK_REPORT)
-    expect(kv.set).toHaveBeenCalledWith('report:abc123', MOCK_REPORT, { ex: 86400 })
+    expect(kv.set).toHaveBeenCalledWith('report:abc123', MOCK_REPORT, { ex: 604800 })
   })
 })
 

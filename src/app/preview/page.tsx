@@ -46,7 +46,7 @@ function ErrorPane({ state }: { state: 'no-id' | 'expired' | 'error' }) {
           className="display font-normal leading-snug mb-5"
           style={{ fontSize: 22, letterSpacing: '-0.015em', color: 'var(--color-text-1)' }}
         >
-          This preview link has expired after 24 hours.
+          This preview link has expired after 7 days.
         </p>
         <p className="ink-soft mb-3" style={{ fontSize: 14, fontWeight: 300, lineHeight: 1.7 }}>
           If you opted in to receive a copy by email at checkout, your full report is in your inbox.

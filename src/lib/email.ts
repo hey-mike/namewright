@@ -2,7 +2,7 @@ import { Resend } from 'resend'
 import type { ReportData } from './types'
 import logger from './logger'
 
-// Sends the user a permanent copy of their paid report. The 24h KV TTL is a
+// Sends the user a permanent copy of their paid report. The 7d KV TTL is a
 // browser-session convenience; this email is the canonical artifact the user
 // keeps. Returns silently when RESEND_API_KEY is unset so dev and pre-launch
 // deploys don't need a Resend account.
@@ -118,11 +118,13 @@ export function renderReportEmail(report: ReportData): RenderedEmail {
 
     <p style="font-size:13px;color:#5c4a36;margin:32px 0 0;line-height:1.6;">
       <strong style="color:#1a1108;">A research short-list, not a legal opinion.</strong>
-      This report is verified registry data (USPTO + EUIPO via Signa, WIPO Madrid) paired with real
-      domain availability (DNS + RDAP + WhoisJSON) and a ranked shortlist calibrated against
-      unregisterability criteria. Take it to a trademark attorney for formal clearance — they&apos;ll
-      work from this instead of starting cold, typically saving 1–2 billable hours ($300–600 at
-      standard rates).
+      This report cross-checks selected registry sources (USPTO + EUIPO via Signa, WIPO Madrid)
+      against real domain availability (DNS + RDAP + WhoisJSON) and ranks candidates against
+      unregisterability criteria. It is preliminary screening, not legal clearance — a name flagged
+      as low-risk here may still conflict with marks not in our sources, and a name flagged high-risk
+      may still be defensibly registrable. Take it to a trademark attorney for formal clearance;
+      they&apos;ll work from this instead of starting cold, typically saving 1–2 billable hours
+      ($300–600 at standard rates).
     </p>
 
     <p style="font-size:12px;color:#9c8a76;margin:24px 0 0;line-height:1.6;">
@@ -183,6 +185,8 @@ function renderCandidateDetailHtml(c: ReportData['candidates'][number], i: numbe
          <p style="font-size:13px;color:#5c4a36;margin:0;line-height:1.7;">${c.domains.alternates.map((a) => escapeHtml(a)).join(' · ')}</p>`
       : ''
 
+  const signalMatrix = c.domains.tldSignals ? renderSignalMatrixHtml(c.domains.tldSignals) : ''
+
   return `<div style="margin-bottom:24px;padding:20px;border:1px solid #e5dccd;border-radius:6px;background:#fdfaf3;">
     <div style="display:flex;gap:12px;align-items:baseline;margin-bottom:8px;">
       <span style="font-family:'DM Mono',Menlo,monospace;font-size:11px;color:#9c8a76;">${String(i + 1).padStart(2, '0')}</span>
@@ -197,8 +201,56 @@ function renderCandidateDetailHtml(c: ReportData['candidates'][number], i: numbe
     <p style="font-size:13px;color:#5c4a36;margin:0;line-height:1.7;">${escapeHtml(c.trademarkNotes)}</p>
     <p style="font-family:'DM Mono',Menlo,monospace;font-size:10px;letter-spacing:0.14em;text-transform:uppercase;color:#9c8a76;margin:12px 0 4px;">Domains</p>
     <table style="border-collapse:collapse;margin:0;">${domainRows}</table>
+    ${signalMatrix}
     ${alternates}
   </div>`
+}
+
+function renderSignalMatrixHtml(
+  tldSignals: NonNullable<ReportData['candidates'][number]['domains']['tldSignals']>
+): string {
+  const rows = Object.entries(tldSignals)
+    .map(([tld, sig]) => {
+      const d = dnsLabelEmail(sig.dns)
+      const r = rdapLabelEmail(sig.rdap)
+      const rg = registrarLabelEmail(sig.registrar)
+      return `<tr>
+        <td style="padding:3px 12px 3px 0;font-family:'DM Mono',Menlo,monospace;font-size:10px;color:#5c4a36;">.${escapeHtml(tld)}</td>
+        <td style="padding:3px 12px 3px 0;font-family:'DM Mono',Menlo,monospace;font-size:10px;color:${d.color};">${escapeHtml(d.label)}</td>
+        <td style="padding:3px 12px 3px 0;font-family:'DM Mono',Menlo,monospace;font-size:10px;color:${r.color};">${escapeHtml(r.label)}</td>
+        <td style="padding:3px 0;font-family:'DM Mono',Menlo,monospace;font-size:10px;color:${rg.color};">${escapeHtml(rg.label)}</td>
+      </tr>`
+    })
+    .join('')
+
+  return `<p style="font-family:'DM Mono',Menlo,monospace;font-size:10px;letter-spacing:0.14em;text-transform:uppercase;color:#9c8a76;margin:12px 0 4px;">Signal breakdown</p>
+    <table style="border-collapse:collapse;margin:0 0 4px;">
+      <thead><tr>
+        <th style="padding:0 12px 4px 0;font-family:'DM Mono',Menlo,monospace;font-size:9px;color:#9c8a76;font-weight:400;letter-spacing:0.08em;text-transform:uppercase;text-align:left;"></th>
+        <th style="padding:0 12px 4px 0;font-family:'DM Mono',Menlo,monospace;font-size:9px;color:#9c8a76;font-weight:400;letter-spacing:0.08em;text-transform:uppercase;text-align:left;">DNS</th>
+        <th style="padding:0 12px 4px 0;font-family:'DM Mono',Menlo,monospace;font-size:9px;color:#9c8a76;font-weight:400;letter-spacing:0.08em;text-transform:uppercase;text-align:left;">RDAP</th>
+        <th style="padding:0 0 4px;font-family:'DM Mono',Menlo,monospace;font-size:9px;color:#9c8a76;font-weight:400;letter-spacing:0.08em;text-transform:uppercase;text-align:left;">Registrar</th>
+      </tr></thead>
+      <tbody>${rows}</tbody>
+    </table>
+    <p style="font-size:11px;color:#9c8a76;margin:0;line-height:1.5;">A dash means the source returned no data (API unavailable or not configured).</p>`
+}
+
+function dnsLabelEmail(s: string | null): { label: string; color: string } {
+  if (s === 'taken') return { label: 'active', color: '#a83232' }
+  if (s === 'enotfound') return { label: 'no records', color: '#3d6b3d' }
+  if (s === 'error') return { label: 'error', color: '#9c8a76' }
+  return { label: '—', color: '#9c8a76' }
+}
+function rdapLabelEmail(s: string | null): { label: string; color: string } {
+  if (s === 'taken') return { label: 'registered', color: '#a83232' }
+  if (s === 'available') return { label: 'available', color: '#3d6b3d' }
+  return { label: '—', color: '#9c8a76' }
+}
+function registrarLabelEmail(s: string | null): { label: string; color: string } {
+  if (s === 'taken') return { label: 'unavailable', color: '#a83232' }
+  if (s === 'available') return { label: 'available', color: '#3d6b3d' }
+  return { label: '—', color: '#9c8a76' }
 }
 
 function domainColorHex(status: string): string {
@@ -253,6 +305,15 @@ function renderReportEmailText(report: ReportData): string {
       .map(([tld, status]) => `.${tld}: ${status}`)
       .join('  |  ')
     if (domainLine) lines.push(`    Domains: ${domainLine}`)
+    if (c.domains.tldSignals) {
+      lines.push(`    Signal breakdown (DNS | RDAP | Registrar):`)
+      for (const [tld, sig] of Object.entries(c.domains.tldSignals)) {
+        const d = dnsLabelEmail(sig.dns).label
+        const r = rdapLabelEmail(sig.rdap).label
+        const rg = registrarLabelEmail(sig.registrar).label
+        lines.push(`      .${tld}: ${d}  |  ${r}  |  ${rg}`)
+      }
+    }
     if (c.domains.alternates.length > 0) {
       lines.push(`    Alternates: ${c.domains.alternates.join(' · ')}`)
     }

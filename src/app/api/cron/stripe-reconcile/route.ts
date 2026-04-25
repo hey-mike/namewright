@@ -82,7 +82,7 @@ export async function GET(req: Request) {
   )
 
   if (missing.length > 0) {
-    // Sessions may be missing from KV because: (a) TTL expired (>24h since
+    // Sessions may be missing from KV because: (a) TTL expired (>7d since
     // generation), (b) webhook was never delivered, or (c) KV write failed.
     // Either way, support needs to know — page with the list.
     await notifySlack({

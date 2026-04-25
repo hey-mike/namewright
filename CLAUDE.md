@@ -25,8 +25,8 @@ CLI reuses the same secret for your device, so you set it once and it works ther
 - Tailwind CSS v4 (`@import "tailwindcss"` — NOT `@tailwind base/components/utilities`)
 - `@anthropic-ai/sdk` — lazy singleton via factory function `client()` in `src/lib/anthropic.ts`, reads `ANTHROPIC_API_KEY` at call time (matches `stripe()` pattern so cold-start doesn't fail before `validateEnv()` runs)
 - `stripe` v22 — lazy singleton via factory function in `src/lib/stripe.ts`
-- `@vercel/kv` — Upstash Redis, 24h TTL for reports
-- `jose` v6 — HS256 JWT, 24h expiry
+- `@vercel/kv` — Upstash Redis, 7d TTL for reports
+- `jose` v6 — HS256 JWT, 7d expiry
 
 ## Folder Structure
 
@@ -63,7 +63,7 @@ Webhook exists for reliability but does NOT set cookies (goes to Stripe's server
 
 ## Product positioning
 
-Namewright is a **naming tool + IP/domain due diligence**, not a brand strategy consultant. Positioning statements, messaging pillars, target audience articulation, tone-of-voice, and visual identity are explicitly out of scope. Customers bring implicit strategy (via description + personality + geography inputs); we consume it, we don't derive it. Keep this distinction when writing prompts, copy, or new features — reaching upward into consulting scope devalues the core wedge.
+Namewright is a **naming tool + preliminary trademark/domain screening**, not a brand strategy consultant and not legal clearance. Positioning statements, messaging pillars, target audience articulation, tone-of-voice, and visual identity are explicitly out of scope. Customers bring implicit strategy (via description + personality + geography inputs); we consume it, we don't derive it. Keep this distinction when writing prompts, copy, or new features — reaching upward into consulting scope devalues the core wedge.
 
 See `README.md` ("Product positioning") and `docs/ROADMAP.md` (Tier 2 "Brand Kit" expansion) for the full framing.
 

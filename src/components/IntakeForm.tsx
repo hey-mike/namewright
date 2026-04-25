@@ -51,10 +51,31 @@ export function IntakeForm() {
     constraints: '',
     geography: '',
     tlds: DEFAULT_TLDS as string[],
+    nameType: 'company' as 'company' | 'product',
   })
   const [loading, setLoading] = useState(false)
   const [loadingStep, setLoadingStep] = useState(0)
   const [error, setError] = useState<string | null>(null)
+  // Click-toggle popover for the brand-personality strength explainer.
+  // Click-driven (not hover) so it's keyboard-reachable; closes on outside
+  // click or Escape via the effect below.
+  const [personalityInfoOpen, setPersonalityInfoOpen] = useState(false)
+  useEffect(() => {
+    if (!personalityInfoOpen) return
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') setPersonalityInfoOpen(false)
+    }
+    function onDocClick(e: MouseEvent) {
+      const target = e.target as HTMLElement | null
+      if (!target?.closest('[data-personality-info]')) setPersonalityInfoOpen(false)
+    }
+    window.addEventListener('keydown', onKey)
+    window.addEventListener('mousedown', onDocClick)
+    return () => {
+      window.removeEventListener('keydown', onKey)
+      window.removeEventListener('mousedown', onDocClick)
+    }
+  }, [personalityInfoOpen])
   // Dev-only state — read from localStorage on mount so the toggle persists
   // across page reloads within a dev session. SSR-safe hydration pattern: the
   // server has no access to localStorage, so we start with the default and
@@ -225,8 +246,9 @@ export function IntakeForm() {
             textTransform: 'uppercase',
             cursor: 'pointer',
             border: '1px solid var(--color-border)',
-            background: pipelineMode === 'mock' ? 'var(--color-input-bg)' : '#fff7c2',
-            color: pipelineMode === 'mock' ? 'var(--color-text-3)' : '#7a5c00',
+            background:
+              pipelineMode === 'mock' ? 'var(--color-input-bg)' : 'var(--color-warning-bg)',
+            color: pipelineMode === 'mock' ? 'var(--color-text-3)' : 'var(--color-warning-txt)',
             transition: `background 0.2s cubic-bezier(0.16, 1, 0.3, 1), color 0.2s cubic-bezier(0.16, 1, 0.3, 1)`,
           }}
         >
@@ -354,6 +376,41 @@ export function IntakeForm() {
               <p className="mono text-[11px] mt-1.5 ink-softer">
                 Be specific about the audience and job-to-be-done.
               </p>
+              <div className="mt-4">
+                <p
+                  className="text-xs mb-2"
+                  style={{ color: 'var(--color-text-2)', letterSpacing: '-0.005em' }}
+                >
+                  Is this a name for:
+                </p>
+                <div className="flex flex-wrap gap-4" role="radiogroup" aria-label="Name type">
+                  {(
+                    [
+                      { value: 'company', label: 'a company' },
+                      { value: 'product', label: 'a product within an existing company' },
+                    ] as const
+                  ).map((opt) => {
+                    const checked = form.nameType === opt.value
+                    return (
+                      <label
+                        key={opt.value}
+                        className="flex items-center gap-2 cursor-pointer text-sm"
+                        style={{ color: 'var(--color-text-2)' }}
+                      >
+                        <input
+                          type="radio"
+                          name="nameType"
+                          value={opt.value}
+                          checked={checked}
+                          onChange={() => setForm({ ...form, nameType: opt.value })}
+                          style={{ accentColor: 'var(--color-accent)' }}
+                        />
+                        <span>{opt.label}</span>
+                      </label>
+                    )
+                  })}
+                </div>
+              </div>
             </div>
 
             <div>
@@ -364,6 +421,53 @@ export function IntakeForm() {
                   style={{ color: 'var(--color-text-1)', letterSpacing: '-0.01em' }}
                 >
                   Brand personality
+                </span>
+                <span data-personality-info className="relative inline-flex items-center">
+                  <button
+                    type="button"
+                    aria-label="Why personality matters for trademark strength"
+                    aria-expanded={personalityInfoOpen}
+                    onClick={() => setPersonalityInfoOpen((v) => !v)}
+                    className="inline-flex items-center justify-center rounded-full"
+                    style={{
+                      width: 16,
+                      height: 16,
+                      border: '1px solid var(--color-border-mid)',
+                      color: 'var(--color-text-3)',
+                      background: 'var(--color-input-bg)',
+                      fontSize: 10,
+                      fontWeight: 600,
+                      lineHeight: 1,
+                      cursor: 'pointer',
+                      fontFamily: 'var(--font-mono, ui-monospace)',
+                    }}
+                  >
+                    i
+                  </button>
+                  {personalityInfoOpen && (
+                    <span
+                      role="tooltip"
+                      style={{
+                        position: 'absolute',
+                        top: 'calc(100% + 8px)',
+                        left: 0,
+                        zIndex: 10,
+                        width: 280,
+                        padding: '10px 12px',
+                        borderRadius: 6,
+                        border: '1px solid var(--color-border)',
+                        background: 'var(--color-input-bg)',
+                        color: 'var(--color-text-2)',
+                        fontSize: 12,
+                        lineHeight: 1.5,
+                        boxShadow: '0 4px 12px var(--color-shadow-soft)',
+                      }}
+                    >
+                      Names that <em>describe</em> what you do (FastPay, QuickShip) are weak
+                      trademarks. Names that <em>evoke</em> without describing (Stripe, Cloudflare)
+                      are stronger. We weight personality chips to bias toward distinctive styles.
+                    </span>
+                  )}
                 </span>
               </div>
               <div className="flex flex-wrap gap-2" role="group" aria-label="Brand personality">
@@ -495,12 +599,24 @@ export function IntakeForm() {
             </div>
 
             {error && (
-              <p className="mono text-xs" style={{ color: 'oklch(0.480 0.170 22)' }}>
+              <p className="mono text-xs" style={{ color: 'var(--color-error)' }}>
                 {error}
               </p>
             )}
 
             <div className="pt-6" style={{ borderTop: '1px solid var(--color-border)' }}>
+              <p
+                className="text-sm mb-5"
+                style={{
+                  color: 'var(--color-text-2)',
+                  lineHeight: 1.55,
+                  fontSize: 14,
+                  maxWidth: '52ch',
+                }}
+              >
+                Preliminary screening of trademark + domain signals. Not legal advice or trademark
+                clearance — take the report to a qualified attorney before committing.
+              </p>
               <button
                 onClick={handleSubmit}
                 disabled={!canSubmit}
@@ -517,9 +633,6 @@ export function IntakeForm() {
                   />
                 </svg>
               </button>
-              <p className="mono text-[11px] mt-3 ink-softer">
-                AI-assisted · preliminary only · not legal advice
-              </p>
             </div>
           </div>
         </div>

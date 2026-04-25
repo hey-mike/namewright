@@ -41,10 +41,12 @@ The shape returned by `/api/generate` is consumed directly by `IntakeForm` (`dat
 
 ## TTL consistency
 
-KV TTL, JWT expiry, and cookie `Max-Age` must all be 86400 (24h). They are currently set in three places:
+KV TTL, JWT expiry, and cookie `Max-Age` must all be 604800 (7 days). They are currently set in three places:
 
 - `src/lib/kv.ts` — `TTL_SECONDS`
-- `src/lib/session.ts` — `setExpirationTime('24h')`
-- `src/app/api/auth/route.ts` — `maxAge: 86400`
+- `src/lib/session.ts` — `setExpirationTime('7d')`
+- `src/app/api/auth/route.ts` — `maxAge: 604800`
 
 Changing one requires changing all three.
+
+The auth nonce in `kv.ts` (`NONCE_TTL_SECONDS`) is deliberately shorter (24h) — it's single-use and only needs to survive the post-checkout redirect window. Do not bump it to match.

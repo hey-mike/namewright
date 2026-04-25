@@ -3,7 +3,7 @@ import logger from './logger'
 import type { ReportData } from './types'
 import { validateReportData } from './anthropic'
 
-const TTL_SECONDS = 86400
+const TTL_SECONDS = 604800 // 7 days — long enough for sleep-on-it / share-with-cofounder before commit
 
 export async function saveReport(reportId: string, report: ReportData): Promise<void> {
   const key = `report:${reportId}`
@@ -32,7 +32,9 @@ export async function getReport(reportId: string): Promise<ReportData | null> {
   }
 }
 
-const NONCE_TTL_SECONDS = 24 * 60 * 60 // matches report TTL
+// Nonce is single-use (atomic getdel below) — 24h is plenty for the
+// post-checkout redirect window. Deliberately shorter than report TTL.
+const NONCE_TTL_SECONDS = 24 * 60 * 60
 
 export async function setAuthNonce(stripeSessionId: string, nonce: string): Promise<void> {
   await kv.set(`auth-nonce:${stripeSessionId}`, nonce, { ex: NONCE_TTL_SECONDS })

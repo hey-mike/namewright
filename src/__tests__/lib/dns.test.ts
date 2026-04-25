@@ -125,6 +125,29 @@ describe('checkAllDomains', () => {
     expect(result.get('Acmely')?.tlds.com).toBe('available')
   })
 
+  it('populates tldSignals with the raw per-source values captured during checking', async () => {
+    process.env.WHOISJSON_API_KEY = 'test-key'
+    mockLookup.mockRejectedValue(Object.assign(new Error('ENOTFOUND'), { code: 'ENOTFOUND' }))
+    mockFetchByUrl({
+      'rdap.org': { status: 404 },
+      'whoisjson.com': { status: 200, body: { available: true } },
+    })
+
+    const result = await checkAllDomains([CANDIDATES[0]], ['com'])
+    const signals = result.get('Acmely')?.tldSignals?.com
+    expect(signals).toEqual({ dns: 'enotfound', rdap: 'available', registrar: 'available' })
+  })
+
+  it('captures null signals when sources return no usable data', async () => {
+    mockLookup.mockResolvedValue({ address: '1.2.3.4', family: 4 })
+    mockFetchByUrl({ 'rdap.org': { status: 500 } })
+    // WHOISJSON_API_KEY unset → registrar returns null
+
+    const result = await checkAllDomains([CANDIDATES[0]], ['com'])
+    const signals = result.get('Acmely')?.tldSignals?.com
+    expect(signals).toEqual({ dns: 'taken', rdap: null, registrar: null })
+  })
+
   it('returns taken via WhoisJSON when API reports available=false', async () => {
     process.env.WHOISJSON_API_KEY = 'test-key'
     mockLookup.mockResolvedValue({ address: '1.2.3.4', family: 4 })

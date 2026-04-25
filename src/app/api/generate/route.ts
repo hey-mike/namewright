@@ -11,8 +11,10 @@ import {
   DEFAULT_TLDS,
   PERSONALITY_VALUES,
   GEOGRAPHY_VALUES,
+  NAME_TYPE_VALUES,
   type Personality,
   type Geography,
+  type NameType,
 } from '@/lib/types'
 import type { GenerateRequest } from '@/lib/types'
 
@@ -63,6 +65,18 @@ export async function POST(req: Request) {
       { status: 400 }
     )
   }
+  // nameType — defaults to 'company' for clients sending pre-nameType payloads
+  // (e.g. older clients or external API consumers). Explicit invalid values
+  // still 400. Validate against the allowlist before narrowing the type, to
+  // mirror the personality / geography pattern above.
+  const nameTypeRaw = body.nameType ?? 'company'
+  if (!(NAME_TYPE_VALUES as readonly string[]).includes(nameTypeRaw)) {
+    return NextResponse.json(
+      { error: `Invalid nameType. Must be one of: ${NAME_TYPE_VALUES.join(', ')}` },
+      { status: 400 }
+    )
+  }
+  const nameType = nameTypeRaw as NameType
   if (body.constraints && body.constraints.length > 500) {
     return NextResponse.json(
       { error: 'constraints must be 500 characters or fewer' },
@@ -101,6 +115,7 @@ export async function POST(req: Request) {
         geography: body.geography as Geography,
         constraints: body.constraints,
         tlds,
+        nameType,
       },
       { requestId, mockPipeline }
     )

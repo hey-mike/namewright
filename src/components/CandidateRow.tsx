@@ -1,6 +1,6 @@
 'use client'
 import { useState } from 'react'
-import type { Candidate } from '@/lib/types'
+import type { Candidate, DomainSignals } from '@/lib/types'
 
 const RISK_COLORS: Record<Candidate['trademarkRisk'], string> = {
   low: 'var(--color-success)',
@@ -14,6 +14,48 @@ function domainStatus(s: string) {
   if (s === 'taken') return { label: 'taken', color: 'var(--color-error)' }
   if (s === 'likely taken') return { label: 'likely taken', color: 'var(--color-error)' }
   return { label: 'uncertain', color: 'var(--color-text-4)' }
+}
+
+// Human-readable labels for the per-source signal matrix. Each function
+// maps the raw enum used by dns.ts into a short phrase a founder can read
+// without needing to know what RDAP or WhoisJSON are.
+function dnsLabel(s: DomainSignals['dns']): { label: string; color: string } {
+  if (s === 'taken') return { label: 'active', color: 'var(--color-error)' }
+  if (s === 'enotfound') return { label: 'no records', color: 'var(--color-success)' }
+  if (s === 'error') return { label: 'error', color: 'var(--color-text-4)' }
+  return { label: '—', color: 'var(--color-text-4)' }
+}
+function rdapLabel(s: DomainSignals['rdap']): { label: string; color: string } {
+  if (s === 'taken') return { label: 'registered', color: 'var(--color-error)' }
+  if (s === 'available') return { label: 'available', color: 'var(--color-success)' }
+  return { label: '—', color: 'var(--color-text-4)' }
+}
+function registrarLabel(s: DomainSignals['registrar']): { label: string; color: string } {
+  if (s === 'taken') return { label: 'unavailable', color: 'var(--color-error)' }
+  if (s === 'available') return { label: 'available', color: 'var(--color-success)' }
+  return { label: '—', color: 'var(--color-text-4)' }
+}
+
+// Collapsed-row indicator: maps a per-source signal to a single letter colored
+// by status. Green = available, red = taken/active, muted = no data. Letters
+// (D/R/W) read at a glance without needing to open the row.
+type SignalGlyph = { color: string; title: string }
+
+function dnsGlyph(s: DomainSignals['dns']): SignalGlyph {
+  if (s === 'taken') return { color: 'var(--color-error)', title: 'DNS: active records' }
+  if (s === 'enotfound') return { color: 'var(--color-success)', title: 'DNS: no records found' }
+  if (s === 'error') return { color: 'var(--color-text-4)', title: 'DNS: lookup error' }
+  return { color: 'var(--color-text-4)', title: 'DNS: no data' }
+}
+function rdapGlyph(s: DomainSignals['rdap']): SignalGlyph {
+  if (s === 'taken') return { color: 'var(--color-error)', title: 'RDAP: registered' }
+  if (s === 'available') return { color: 'var(--color-success)', title: 'RDAP: available' }
+  return { color: 'var(--color-text-4)', title: 'RDAP: no data' }
+}
+function registrarGlyph(s: DomainSignals['registrar']): SignalGlyph {
+  if (s === 'taken') return { color: 'var(--color-error)', title: 'WhoisJSON: unavailable' }
+  if (s === 'available') return { color: 'var(--color-success)', title: 'WhoisJSON: available' }
+  return { color: 'var(--color-text-4)', title: 'WhoisJSON: no data' }
 }
 
 export function CandidateRow({
@@ -34,6 +76,7 @@ export function CandidateRow({
   const [open, setOpen] = useState(defaultOpen)
 
   const riskColor = RISK_COLORS[c.trademarkRisk]
+  const tldSignals = c.domains.tldSignals
 
   return (
     <div className="border-b rule-soft">
@@ -57,6 +100,34 @@ export function CandidateRow({
           </span>
         </div>
         <div className="flex items-center gap-3 shrink-0">
+          {tldSignals && (
+            <span
+              className="mono text-[10px] tracking-wider uppercase hidden lg:flex items-center gap-3"
+              aria-label="Per-source domain signals"
+            >
+              {Object.entries(tldSignals).map(([tld, sig]) => {
+                const d = dnsGlyph(sig.dns)
+                const r = rdapGlyph(sig.rdap)
+                const w = registrarGlyph(sig.registrar)
+                return (
+                  <span key={tld} className="flex items-center gap-1.5">
+                    <span style={{ color: 'var(--color-text-4)' }}>.{tld}</span>
+                    <span className="flex items-center gap-0.5">
+                      <span style={{ color: d.color }} title={d.title}>
+                        D
+                      </span>
+                      <span style={{ color: r.color }} title={r.title}>
+                        R
+                      </span>
+                      <span style={{ color: w.color }} title={w.title}>
+                        W
+                      </span>
+                    </span>
+                  </span>
+                )
+              })}
+            </span>
+          )}
           <span className="mono text-[10px] tracking-widest uppercase" style={{ color: riskColor }}>
             {c.trademarkRisk.toUpperCase()} RISK
           </span>
@@ -133,6 +204,105 @@ export function CandidateRow({
                 )
               })}
             </ul>
+            {c.domains.tldSignals && (
+              <div className="mb-3">
+                <p
+                  className="mono text-[10px] tracking-widest uppercase mb-2"
+                  style={{ color: 'var(--color-text-4)' }}
+                >
+                  Signal breakdown
+                </p>
+                <p
+                  className="mono text-[10px] leading-relaxed mb-2"
+                  style={{ color: 'var(--color-text-4)' }}
+                >
+                  DNS = active records on the domain. RDAP = registry record. WhoisJSON =
+                  third-party registrar lookup.
+                </p>
+                <table className="w-full" style={{ borderCollapse: 'collapse', fontSize: 11 }}>
+                  <thead>
+                    <tr>
+                      <th
+                        className="mono text-left pb-1 pr-3"
+                        style={{
+                          color: 'var(--color-text-4)',
+                          fontWeight: 400,
+                          letterSpacing: '0.08em',
+                          textTransform: 'uppercase',
+                          fontSize: 10,
+                        }}
+                      />
+                      <th
+                        className="mono text-left pb-1 pr-3"
+                        style={{
+                          color: 'var(--color-text-4)',
+                          fontWeight: 400,
+                          letterSpacing: '0.08em',
+                          textTransform: 'uppercase',
+                          fontSize: 10,
+                        }}
+                      >
+                        DNS
+                      </th>
+                      <th
+                        className="mono text-left pb-1 pr-3"
+                        style={{
+                          color: 'var(--color-text-4)',
+                          fontWeight: 400,
+                          letterSpacing: '0.08em',
+                          textTransform: 'uppercase',
+                          fontSize: 10,
+                        }}
+                      >
+                        RDAP
+                      </th>
+                      <th
+                        className="mono text-left pb-1"
+                        style={{
+                          color: 'var(--color-text-4)',
+                          fontWeight: 400,
+                          letterSpacing: '0.08em',
+                          textTransform: 'uppercase',
+                          fontSize: 10,
+                        }}
+                      >
+                        WhoisJSON
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {Object.entries(c.domains.tldSignals).map(([tld, sig]) => {
+                      const d = dnsLabel(sig.dns)
+                      const r = rdapLabel(sig.rdap)
+                      const rg = registrarLabel(sig.registrar)
+                      return (
+                        <tr key={tld}>
+                          <td className="mono py-1 pr-3" style={{ color: 'var(--color-text-3)' }}>
+                            .{tld}
+                          </td>
+                          <td className="mono py-1 pr-3" style={{ color: d.color }}>
+                            {d.label}
+                          </td>
+                          <td className="mono py-1 pr-3" style={{ color: r.color }}>
+                            {r.label}
+                          </td>
+                          <td className="mono py-1" style={{ color: rg.color }}>
+                            {rg.label}
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+                <p
+                  className="mono text-[10px] leading-relaxed mt-2"
+                  style={{ color: 'var(--color-text-4)' }}
+                >
+                  Final status combines these signals. A dash means the source returned no data (API
+                  unavailable or not configured).
+                </p>
+              </div>
+            )}
             {Object.values(c.domains.tlds).some(
               (s) => s === 'uncertain' || s === 'likely taken'
             ) && (

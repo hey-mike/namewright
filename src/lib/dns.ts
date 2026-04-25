@@ -1,5 +1,5 @@
 import { lookup } from 'dns/promises'
-import type { CandidateProposal, DomainAvailability, DomainStatus } from './types'
+import type { CandidateProposal, DomainAvailability, DomainSignals, DomainStatus } from './types'
 import logger from './logger'
 
 type DnsResult = 'taken' | 'enotfound' | 'error'
@@ -72,7 +72,12 @@ export function aggregateDomainStatus(
   return 'uncertain'
 }
 
-async function checkDomain(hostname: string): Promise<DomainStatus> {
+interface DomainCheck {
+  status: DomainStatus
+  signals: DomainSignals
+}
+
+async function checkDomain(hostname: string): Promise<DomainCheck> {
   const [dnsResult, rdapResult, wjResult] = await Promise.allSettled([
     checkDns(hostname),
     checkRdap(hostname),
@@ -85,7 +90,7 @@ async function checkDomain(hostname: string): Promise<DomainStatus> {
 
   const status = aggregateDomainStatus(dns, rdap, dd)
   logger.debug({ hostname, dns, rdap, dd, status }, 'domain check')
-  return status
+  return { status, signals: { dns, rdap, registrar: dd } }
 }
 
 export async function checkAllDomains(
@@ -98,9 +103,10 @@ export async function checkAllDomains(
         .toLowerCase()
         .replace(/\s+/g, '-')
         .replace(/[^a-z0-9-]/g, '')
-      const statuses = await Promise.all(tlds.map((tld) => checkDomain(`${slug}.${tld}`)))
+      const checks = await Promise.all(tlds.map((tld) => checkDomain(`${slug}.${tld}`)))
       const availability: DomainAvailability = {
-        tlds: Object.fromEntries(tlds.map((tld, i) => [tld, statuses[i]])),
+        tlds: Object.fromEntries(tlds.map((tld, i) => [tld, checks[i].status])),
+        tldSignals: Object.fromEntries(tlds.map((tld, i) => [tld, checks[i].signals])),
         alternates: [],
       }
       return { name: c.name, availability }
@@ -112,8 +118,10 @@ export async function checkAllDomains(
       if (result.status === 'fulfilled') {
         return [result.value.name, result.value.availability]
       }
+      const fallbackSignals: DomainSignals = { dns: null, rdap: null, registrar: null }
       const fallback: DomainAvailability = {
         tlds: Object.fromEntries(tlds.map((tld) => [tld, 'uncertain' as DomainStatus])),
+        tldSignals: Object.fromEntries(tlds.map((tld) => [tld, fallbackSignals])),
         alternates: [],
       }
       return [candidates[i].name, fallback]

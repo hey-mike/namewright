@@ -58,7 +58,7 @@ export async function GET(request: NextRequest) {
     secure: true,
     sameSite: 'lax',
     path: '/',
-    maxAge: 86400,
+    maxAge: 604800,
   })
 
   return response

@@ -186,4 +186,41 @@ describe('renderReportEmail', () => {
     expect(html).not.toContain('Not legal advice.')
     expect(text).not.toContain('Not legal advice.')
   })
+
+  it('omits the signal matrix when no candidate has tldSignals', () => {
+    // SAMPLE_REPORT has no tldSignals on any candidate
+    const { html, text } = renderReportEmail(SAMPLE_REPORT)
+    expect(html).not.toContain('Signal breakdown')
+    expect(text).not.toContain('Signal breakdown')
+  })
+
+  it('renders the signal matrix when tldSignals is present', () => {
+    const withSignals: ReportData = {
+      ...SAMPLE_REPORT,
+      candidates: SAMPLE_REPORT.candidates.map((c, i) =>
+        i === 0
+          ? {
+              ...c,
+              domains: {
+                ...c.domains,
+                tldSignals: {
+                  com: { dns: 'enotfound', rdap: 'available', registrar: 'available' },
+                  io: { dns: 'taken', rdap: null, registrar: null },
+                },
+              },
+            }
+          : c
+      ),
+    }
+    const { html, text } = renderReportEmail(withSignals)
+    // HTML: heading + human labels
+    expect(html).toContain('Signal breakdown')
+    expect(html).toContain('no records')
+    expect(html).toContain('available')
+    expect(html).toContain('active')
+    // Text: heading + per-TLD line
+    expect(text).toContain('Signal breakdown (DNS | RDAP | Registrar)')
+    expect(text).toContain('.com: no records  |  available  |  available')
+    expect(text).toContain('.io: active  |  —  |  —')
+  })
 })

@@ -27,6 +27,11 @@ export const DEV_MOCK_REPORT: ReportData = {
         "No live conflicts share the mark string 'STNDLY.' Nearby marks are phonetically and visually sufficiently distinct to pose minimal confusion risk.",
       domains: {
         tlds: { com: 'available', io: 'available', co: 'available' },
+        tldSignals: {
+          com: { dns: 'enotfound', rdap: 'available', registrar: 'available' },
+          io: { dns: 'enotfound', rdap: 'available', registrar: 'available' },
+          co: { dns: 'enotfound', rdap: 'available', registrar: 'available' },
+        },
         alternates: [],
       },
     },
@@ -39,6 +44,11 @@ export const DEV_MOCK_REPORT: ReportData = {
       trademarkNotes: 'No live conflicts found for DRIFTLOG in Class 42 across queried offices.',
       domains: {
         tlds: { com: 'likely taken', io: 'available', co: 'uncertain' },
+        tldSignals: {
+          com: { dns: 'taken', rdap: null, registrar: null },
+          io: { dns: 'enotfound', rdap: 'available', registrar: 'available' },
+          co: { dns: 'taken', rdap: 'available', registrar: null },
+        },
         alternates: [],
       },
     },
@@ -52,6 +62,11 @@ export const DEV_MOCK_REPORT: ReportData = {
         'No conflicts found in queried offices. Fully invented term with no prior registrations identified.',
       domains: {
         tlds: { com: 'available', io: 'uncertain', co: 'uncertain' },
+        tldSignals: {
+          com: { dns: 'enotfound', rdap: 'available', registrar: 'available' },
+          io: { dns: 'error', rdap: null, registrar: null },
+          co: { dns: 'enotfound', rdap: null, registrar: null },
+        },
         alternates: [],
       },
     },
@@ -65,6 +80,11 @@ export const DEV_MOCK_REPORT: ReportData = {
         'All located conflicts are dead registrations — SYNCRA (USPTO, dead, Class 9/42). Clear Class 42 field in both USPTO and EUIPO.',
       domains: {
         tlds: { com: 'uncertain', io: 'uncertain', co: 'uncertain' },
+        tldSignals: {
+          com: { dns: 'taken', rdap: 'available', registrar: null },
+          io: { dns: 'error', rdap: null, registrar: null },
+          co: { dns: 'taken', rdap: null, registrar: 'available' },
+        },
         alternates: [],
       },
     },
@@ -78,6 +98,11 @@ export const DEV_MOCK_REPORT: ReportData = {
         'Multiple live conflicts exist: CADENCE (USPTO, live, Class 42, reg #3474135, owner: Cadence Design Systems, Inc.) creates a crowded Class 42 landscape.',
       domains: {
         tlds: { com: 'taken', io: 'available', co: 'available' },
+        tldSignals: {
+          com: { dns: 'taken', rdap: 'taken', registrar: 'taken' },
+          io: { dns: 'enotfound', rdap: 'available', registrar: 'available' },
+          co: { dns: 'enotfound', rdap: 'available', registrar: 'available' },
+        },
         alternates: [],
       },
     },
@@ -91,6 +116,11 @@ export const DEV_MOCK_REPORT: ReportData = {
         'Heavily conflicted: MERIDIAN (USPTO, live, Class 9/42, reg #8119234, owner: American Megatrends International, LLC).',
       domains: {
         tlds: { com: 'taken', io: 'uncertain', co: 'uncertain' },
+        tldSignals: {
+          com: { dns: 'taken', rdap: 'taken', registrar: 'taken' },
+          io: { dns: 'taken', rdap: 'available', registrar: null },
+          co: { dns: 'taken', rdap: null, registrar: null },
+        },
         alternates: [],
       },
     },
@@ -104,6 +134,11 @@ export const DEV_MOCK_REPORT: ReportData = {
         'Located conflicts — PELLUCID (USPTO, dead, Class 42, reg #4467413) — are all dead registrations.',
       domains: {
         tlds: { com: 'likely taken', io: 'likely taken', co: 'uncertain' },
+        tldSignals: {
+          com: { dns: 'taken', rdap: null, registrar: null },
+          io: { dns: 'taken', rdap: null, registrar: null },
+          co: { dns: 'taken', rdap: 'available', registrar: null },
+        },
         alternates: [],
       },
     },
@@ -116,6 +151,11 @@ export const DEV_MOCK_REPORT: ReportData = {
       trademarkNotes: 'No conflicts found in queried offices.',
       domains: {
         tlds: { com: 'taken', io: 'taken', co: 'taken' },
+        tldSignals: {
+          com: { dns: 'taken', rdap: 'taken', registrar: 'taken' },
+          io: { dns: 'taken', rdap: 'taken', registrar: 'taken' },
+          co: { dns: 'taken', rdap: 'taken', registrar: 'taken' },
+        },
         alternates: ['trydomedrun.com', 'getdomedrun.io'],
       },
     },

@@ -179,7 +179,7 @@ export function FreePreview({
               <p className="mono ink-softer mt-1.5 leading-snug" style={{ fontSize: 11 }}>
                 {emailTouched && !emailValid
                   ? 'Enter a valid email or leave blank.'
-                  : 'Keeps your report past the 24-hour browser link.'}
+                  : 'Keeps your report past the 7-day browser link.'}
               </p>
             </div>
 

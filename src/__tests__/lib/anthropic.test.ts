@@ -306,6 +306,7 @@ describe('generateCandidates', () => {
       personality: 'Bold / contrarian',
       constraints: '',
       geography: 'Global',
+      nameType: 'company',
     })
 
     expect(result).toHaveLength(8)
@@ -318,7 +319,13 @@ describe('generateCandidates', () => {
     mockCreate.mockResolvedValue(makeTextResponse(JSON.stringify(tooFew)))
 
     await expect(
-      generateCandidates({ description: 'x', personality: 'y', constraints: '', geography: 'z' })
+      generateCandidates({
+        description: 'x',
+        personality: 'y',
+        constraints: '',
+        geography: 'z',
+        nameType: 'company',
+      })
     ).rejects.toThrow('Too few candidates')
   })
 
@@ -328,7 +335,13 @@ describe('generateCandidates', () => {
     })
 
     await expect(
-      generateCandidates({ description: 'x', personality: 'y', constraints: '', geography: 'z' })
+      generateCandidates({
+        description: 'x',
+        personality: 'y',
+        constraints: '',
+        geography: 'z',
+        nameType: 'company',
+      })
     ).rejects.toThrow('no text block')
   })
 
@@ -348,6 +361,7 @@ describe('generateCandidates', () => {
       personality: 'y',
       constraints: '',
       geography: 'z',
+      nameType: 'company',
     })
 
     expect(result).toHaveLength(8)
@@ -370,6 +384,7 @@ describe('generateCandidates', () => {
       personality: 'y',
       constraints: '',
       geography: 'z',
+      nameType: 'company',
     })
 
     expect(result).toHaveLength(8)
@@ -379,6 +394,40 @@ describe('generateCandidates', () => {
     const retryUserMsg = retryCall.messages[0].content as string
     expect(retryUserMsg).toContain('ASCII Latin characters')
     expect(retryUserMsg).toContain('Cyrillic')
+  })
+
+  it('passes the nameType through to the LLM user message', async () => {
+    expect.assertions(1)
+    mockCreate.mockResolvedValue(makeTextResponse(JSON.stringify(MOCK_PROPOSALS)))
+
+    await generateCandidates({
+      description: 'A SaaS tool',
+      personality: 'Bold / contrarian',
+      constraints: '',
+      geography: 'Global',
+      nameType: 'product',
+    })
+
+    const callArgs = mockCreate.mock.calls[0][0]
+    const userMsg = callArgs.messages[0].content as string
+    expect(userMsg).toContain('Name type: product within an existing company')
+  })
+
+  it('renders nameType "company" as company entity in the user message', async () => {
+    expect.assertions(1)
+    mockCreate.mockResolvedValue(makeTextResponse(JSON.stringify(MOCK_PROPOSALS)))
+
+    await generateCandidates({
+      description: 'A SaaS tool',
+      personality: 'Bold / contrarian',
+      constraints: '',
+      geography: 'Global',
+      nameType: 'company',
+    })
+
+    const callArgs = mockCreate.mock.calls[0][0]
+    const userMsg = callArgs.messages[0].content as string
+    expect(userMsg).toContain('Name type: company entity')
   })
 
   it('throws if both attempts produce homoglyph-prone names', async () => {
@@ -392,7 +441,13 @@ describe('generateCandidates', () => {
       .mockResolvedValueOnce(makeTextResponse(JSON.stringify(homoglyphProposals)))
 
     await expect(
-      generateCandidates({ description: 'x', personality: 'y', constraints: '', geography: 'z' })
+      generateCandidates({
+        description: 'x',
+        personality: 'y',
+        constraints: '',
+        geography: 'z',
+        nameType: 'company',
+      })
     ).rejects.toThrow(/homoglyph-prone/)
     expect(mockCreate).toHaveBeenCalledTimes(2)
   })
@@ -454,6 +509,7 @@ describe('synthesiseReport', () => {
         personality: 'Bold / contrarian',
         constraints: '',
         geography: 'Global',
+        nameType: 'company',
       },
       VERIFIED
     )
@@ -472,6 +528,7 @@ describe('synthesiseReport', () => {
         personality: 'Bold / contrarian',
         constraints: '',
         geography: 'Global',
+        nameType: 'company',
       },
       VERIFIED
     )
@@ -487,7 +544,13 @@ describe('synthesiseReport', () => {
 
     await expect(
       synthesiseReport(
-        { description: 'x', personality: 'y', constraints: '', geography: 'z' },
+        {
+          description: 'x',
+          personality: 'y',
+          constraints: '',
+          geography: 'z',
+          nameType: 'company',
+        },
         VERIFIED
       )
     ).rejects.toThrow('no text block')
@@ -555,6 +618,7 @@ describe('generateReport orchestrator', () => {
       personality: 'Bold / contrarian',
       constraints: '',
       geography: 'Global',
+      nameType: 'company',
     })
 
     expect(checkAllTrademarks).toHaveBeenCalledWith(MOCK_PROPOSALS, 42, 'Global')
@@ -571,6 +635,7 @@ describe('generateReport orchestrator', () => {
       personality: 'Playful / approachable',
       constraints: '',
       geography: 'US-first',
+      nameType: 'company',
     })
 
     expect(checkAllTrademarks).toHaveBeenCalledWith(MOCK_PROPOSALS, 30, 'US-first')
@@ -586,6 +651,7 @@ describe('generateReport orchestrator', () => {
       personality: 'Bold / contrarian',
       constraints: '',
       geography: 'Global',
+      nameType: 'company',
     })
 
     expect(checkAllTrademarks).toHaveBeenCalledWith(MOCK_PROPOSALS, 42, 'Global')
@@ -604,6 +670,7 @@ describe('generateReport orchestrator', () => {
         personality: 'Bold / contrarian',
         constraints: '',
         geography: 'Global',
+        nameType: 'company',
       })
     ).rejects.toThrow('Both trademark and domain verification failed')
   })
@@ -617,6 +684,7 @@ describe('generateReport orchestrator', () => {
       personality: 'Bold / contrarian',
       constraints: '',
       geography: 'Global',
+      nameType: 'company',
     })
 
     expect(checkAllEuipoTrademarks).not.toHaveBeenCalled()
@@ -632,6 +700,7 @@ describe('generateReport orchestrator', () => {
       personality: 'Bold / contrarian',
       constraints: '',
       geography: 'US-first',
+      nameType: 'company',
     })
 
     expect(checkAllEuipoTrademarks).not.toHaveBeenCalled()
@@ -653,6 +722,7 @@ describe('generateReport orchestrator', () => {
         personality: 'Bold / contrarian',
         constraints: '',
         geography: 'Global',
+        nameType: 'company',
       },
       { requestId: 'req-flagon' }
     )
@@ -692,7 +762,7 @@ describe('extractCitedMarks', () => {
 
   it('returns empty array for notes with no mark citations', () => {
     expect(extractCitedMarks('No conflicts found in any registry.')).toEqual([])
-    expect(extractCitedMarks('Cross-verified clear across Signa + EUIPO.')).toEqual([])
+    expect(extractCitedMarks('No live conflicts found in Signa + EUIPO.')).toEqual([])
   })
 
   it('deduplicates repeated mark references', () => {
@@ -891,14 +961,14 @@ describe('validateStyleDistribution', () => {
 })
 
 describe('mergeTrademarkResults', () => {
-  it('returns cross-verified clear when both sources return low', () => {
+  it('reports no live conflicts found when both sources return low', () => {
     const merged = mergeTrademarkResults(
       mkTrademark('Acme', 'low', 'Signa'),
       mkTrademark('Acme', 'low', 'EUIPO direct')
     )
 
     expect(merged.risk).toBe('low')
-    expect(merged.notes).toContain('Cross-verified clear')
+    expect(merged.notes).toContain('No live conflicts found')
     expect(merged.sources).toEqual(['Signa', 'EUIPO direct'])
   })
 

@@ -94,7 +94,7 @@ export function FullReport({ report }: { report: ReportData }) {
 
       <section className="mb-14">
         <div
-          className="flex items-baseline justify-between mb-6 pb-3"
+          className="flex items-baseline justify-between mb-3 pb-3"
           style={{ borderBottom: '1px solid var(--color-border)' }}
         >
           <p
@@ -105,6 +105,13 @@ export function FullReport({ report }: { report: ReportData }) {
           </p>
           <span className="mono text-[11px] ink-softer">{report.candidates.length} total</span>
         </div>
+        <p
+          className="mono text-[10px] leading-relaxed mb-6"
+          style={{ color: 'var(--color-text-4)' }}
+        >
+          Each domain status is cross-checked across DNS, RDAP, and WhoisJSON when available. A dash
+          (—) indicates the source returned no data.
+        </p>
         {report.candidates.map((c, i) => (
           <CandidateRow key={c.name} c={c} index={i} defaultOpen={i < 3} />
         ))}
@@ -142,11 +149,13 @@ export function FullReport({ report }: { report: ReportData }) {
           <strong style={{ color: 'var(--color-text-3)' }}>
             A research short-list, not a legal opinion.
           </strong>{' '}
-          This report is verified registry data (USPTO + EUIPO via Signa, WIPO Madrid) paired with
-          real domain availability (DNS + RDAP + WhoisJSON) and a ranked shortlist calibrated
-          against unregisterability criteria. Take it to a trademark attorney for formal clearance —
-          they&apos;ll work from this instead of starting cold, typically saving 1–2 billable hours
-          ($300–600 at standard rates). Registry data as of {today}.
+          This report cross-checks selected registry sources (USPTO + EUIPO via Signa, WIPO Madrid)
+          against real domain availability (DNS + RDAP + WhoisJSON) and ranks candidates against
+          unregisterability criteria. It is preliminary screening, not legal clearance — a name
+          flagged as low-risk here may still conflict with marks not in our sources, and a name
+          flagged high-risk may still be defensibly registrable. Take it to a trademark attorney for
+          formal clearance; they&apos;ll work from this instead of starting cold, typically saving
+          1–2 billable hours ($300–600 at standard rates). Registry data as of {today}.
         </p>
       </section>
 
@@ -189,7 +198,7 @@ export function FullReport({ report }: { report: ReportData }) {
       <section className="mb-6">
         <p className="text-xs ink-softer leading-relaxed mb-2">
           <strong style={{ color: 'var(--color-text-3)' }}>
-            This report expires 24 hours after generation.
+            This report expires 7 days after generation.
           </strong>{' '}
           Download a copy now — once expired, this link will no longer work. If you opted in to
           receive an email copy at checkout, your full report is in your inbox.

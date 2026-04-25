@@ -4,8 +4,22 @@ export const DEFAULT_TLDS: SupportedTld[] = ['com', 'io', 'co']
 
 export type DomainStatus = 'available' | 'taken' | 'likely taken' | 'uncertain'
 
+// Raw per-source signals captured during domain checking. Exposed to the
+// user as a "confidence matrix" so they see why a status is what it is,
+// rather than trusting a black-box label. null = source returned no signal
+// (API down, rate-limited, or not configured — e.g. WhoisJSON without key).
+export interface DomainSignals {
+  dns: 'taken' | 'enotfound' | 'error' | null
+  rdap: 'taken' | 'available' | null
+  registrar: 'taken' | 'available' | null
+}
+
 export interface DomainAvailability {
   tlds: Record<string, DomainStatus>
+  // Optional — older KV-stored reports and reports generated before the
+  // confidence-matrix feature shipped won't have this. UI must handle
+  // absence gracefully.
+  tldSignals?: Record<string, DomainSignals>
   alternates: string[]
 }
 
@@ -40,6 +54,7 @@ export interface GenerateRequest {
   constraints?: string
   geography: string
   tlds: string[]
+  nameType: 'company' | 'product'
 }
 
 export interface GenerateResponse {
@@ -85,3 +100,6 @@ export const GEOGRAPHY_VALUES = [
   'China / Asia',
 ] as const
 export type Geography = (typeof GEOGRAPHY_VALUES)[number]
+
+export const NAME_TYPE_VALUES = ['company', 'product'] as const
+export type NameType = (typeof NAME_TYPE_VALUES)[number]

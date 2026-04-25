@@ -125,7 +125,7 @@ export function mergeTrademarkResults(
 
   let prefix = ''
   if (crossVerifiedClean) {
-    prefix = 'Cross-verified clear across Signa + EUIPO. '
+    prefix = 'No live conflicts found in Signa + EUIPO. '
   } else if (sourcesDisagree) {
     prefix = `Sources disagree (Signa: ${signa.risk}, EUIPO: ${euipo.risk}); using worst-case. `
   } else if (signaOnly) {
@@ -788,6 +788,9 @@ const GENERATE_CANDIDATES_PROMPT = `You are a brand naming specialist. Generate 
   - No laudatory terms used alone (e.g. "Best", "Premium", "Superior", "Elite") — trademark offices refuse these as merely self-congratulatory
   - No names that are, or closely resemble, the name of a real living or deceased person — these require consent and are routinely refused without it
   - No corporate suffixes appended to the name (e.g. "Verity Inc", "Acmely LLC") — the suffix is disclaimed in trademark filings and adds no protectable value; the brand name alone is what gets registered
+- The "Name type" input distinguishes a company-entity name from a product-within-a-company name. These have different trademark risk profiles:
+  - Company-entity names are evaluated under the commercial-impression doctrine — the whole mark is compared as encountered by consumers across the company's full activity, so phonetic and visual similarity to existing company names matters more.
+  - Product names are evaluated within their goods/services class — a product name can coexist with an identical mark in an unrelated class. Phrase rationale and risk framing accordingly.
 - Treat the constraints field as hard requirements. Every candidate must satisfy them (e.g. "max 6 characters" eliminates any name longer than 6 characters; "no acronyms" eliminates the acronym style entirely). If a constraint is contradictory or impossible, do not attempt it — instead generate the best candidates you can and note the conflict in the rationale of affected names.
 - For each candidate write 2-3 sentences of strategic rationale explaining why it fits.
 
@@ -821,6 +824,7 @@ async function callGenerateCandidatesOnce(
 ): Promise<CandidateProposal[]> {
   const asciiCaveat = opts.retryReason === 'homoglyph' ? ASCII_ONLY_CAVEAT : ''
   const userMessage = `Product: ${req.description}
+Name type: ${req.nameType === 'product' ? 'product within an existing company' : 'company entity'}
 Brand personality: ${req.personality}
 Constraints: ${req.constraints || 'none'}
 Primary market: ${req.geography}${asciiCaveat}
@@ -881,14 +885,14 @@ interface VerifiedCandidate extends CandidateProposal {
   domains: import('./types').DomainAvailability
 }
 
-// Extracts the cross-source coverage prefix (Cross-verified / Sources disagree /
+// Extracts the cross-source coverage prefix (No live conflicts / Sources disagree /
 // EUIPO unavailable / Signa-only) that mergeTrademarkResults attaches to the
 // front of `notes`. Returns null if no coverage prefix is present (e.g. when
 // only one source ran). Single source of truth for both producers and
 // consumers of the prefix — keep the patterns aligned with mergeTrademarkResults.
 function extractCoverageNote(notes: string): string | null {
   const patterns = [
-    /^Cross-verified clear[^.]*\./,
+    /^No live conflicts found[^.]*\./,
     /^Sources disagree[^.]*\./,
     /^EUIPO check unavailable[^.]*\./,
     /^Signa check unavailable[^.]*\./,
@@ -905,7 +909,7 @@ const SYNTHESISE_REPORT_PROMPT = `You are a brand strategy expert. You have been
 
 # Instructions
 - Assess trademark risk using the data provided. When conflicts are listed, cite specific marks by name in trademarkNotes — include the mark text and at least one identifying detail (registration number, office, or class). When no conflicts are listed, state that clearly. Do NOT invent marks that are not in the provided conflict data.
-- When the data includes a "Coverage note:" line, you MUST preserve its meaning verbatim at the START of trademarkNotes for that candidate. Examples: "Cross-verified clear across Signa + EUIPO." (both registries returned no live conflicts), "Sources disagree (Signa: high, EUIPO: low); using worst-case." (registry results conflict), or "EUIPO check unavailable; risk reflects Signa-only data." (one source failed). This tells the user how confident the risk grade is.
+- When the data includes a "Coverage note:" line, you MUST preserve its meaning verbatim at the START of trademarkNotes for that candidate. Examples: "No live conflicts found in Signa + EUIPO." (both registries returned no live conflicts in the searched databases — this is preliminary screening, not legal clearance), "Sources disagree (Signa: high, EUIPO: low); using worst-case." (registry results conflict), or "EUIPO check unavailable; risk reflects Signa-only data." (one source failed). This tells the user how confident the risk grade is.
 - Use only the trademarkRisk value provided in the data — do not re-bucket it.
 - Copy domain status values exactly as provided — do not alter them.
 - For each TLD marked as "taken" or "likely taken", suggest 2-3 creative alternate domain strings (e.g. getbrandname.com, trybrandname.io). Leave "alternates" as an empty array if no TLD is taken or likely taken.
@@ -969,8 +973,8 @@ export async function synthesiseReport(
               .join('\n')}`
       const sources =
         v.trademark.sources.length > 0 ? v.trademark.sources.join(', ') : 'none (search degraded)'
-      // Surface the cross-source verification status so the LLM can preserve
-      // it in trademarkNotes — without this the "Cross-verified clear" /
+      // Surface the cross-source coverage status so the LLM can preserve
+      // it in trademarkNotes — without this the "No live conflicts found" /
       // "Sources disagree" / "EUIPO unavailable" signal computed by
       // mergeTrademarkResults is silently discarded (accuracy audit P0 #3).
       const coverageNote = extractCoverageNote(v.trademark.notes)
@@ -991,6 +995,7 @@ ${domainLines}`
       : ''
 
   const userMessage = `Product: ${req.description}
+Name type: ${req.nameType === 'product' ? 'product within an existing company' : 'company entity'}
 Brand personality: ${req.personality}
 Constraints: ${req.constraints || 'none'}
 Primary market: ${req.geography}${niceClassCaveat}
@@ -1023,6 +1028,19 @@ Produce the final brand name report as JSON.`
       usage: response.usage,
     })
     const report = parseReport(text)
+    // Merge server-side per-source domain signals into the LLM-produced
+    // candidates. The synthesise prompt deliberately doesn't surface
+    // signals to the LLM (that would invite hallucinated RDAP/DNS values);
+    // instead we re-attach the verified evidence here so the UI can render
+    // the confidence matrix and the user sees why each status is what it
+    // is. LLM controls narrative; server controls facts.
+    const verifiedByName = new Map(verified.map((v) => [v.name, v]))
+    for (const c of report.candidates) {
+      const v = verifiedByName.get(c.name)
+      if (v?.domains.tldSignals) {
+        c.domains.tldSignals = v.domains.tldSignals
+      }
+    }
     // Grounding check — log warn for any cited mark in trademarkNotes that
     // doesn't appear in the verified input conflicts. Telemetry-only for now;
     // upgrade to strip/retry once we have prod hallucination-rate data.

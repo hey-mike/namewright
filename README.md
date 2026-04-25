@@ -1,11 +1,11 @@
 # Namewright
 
-A $19 brand-naming tool for solo founders pre-incorporation. Submit a brief, get 8–12 ranked name candidates with trademark risk (Signa + optional EUIPO) and domain availability (DNS + RDAP + WhoisJSON) across three TLDs. Cross-source verified, structured report in under 90 seconds.
+A $19 brand-naming tool for solo founders pre-incorporation. Submit a brief, get 8–12 ranked name candidates with preliminary trademark screening (Signa + optional EUIPO) and domain availability (DNS + RDAP + WhoisJSON) across three TLDs. Cross-checked across selected sources, structured report in under 90 seconds.
 
-**What it is:** structured naming + legal/domain due diligence.
-**What it isn't:** a brand strategy consultant. Positioning, messaging, visual identity, and competitive differentiation are out of scope (see "Not a brand strategist" below).
+**What it is:** structured naming + preliminary trademark/domain screening.
+**What it isn't:** a brand strategy consultant, and not legal clearance. Positioning, messaging, visual identity, and competitive differentiation are out of scope. Trademark clearance requires a qualified attorney — we surface signals to inform that conversation, not replace it.
 
-Landing copy: _"Name your brand well. Own it defensibly."_
+Landing copy: _"Name your brand. Before you commit."_
 
 ## Dev setup
 
@@ -55,7 +55,7 @@ intake form (IntakeForm.tsx)
         └─► synthesiseReport (Anthropic)  ── single
               └─► validateReportData + validateGroundedMarks
                     └─► auto-fix ranking / prefix / topPicks violations
-  └─► saveReport (KV, 24h TTL)
+  └─► saveReport (KV, 7d TTL)
   └─► return { reportId, preview }
 
 payment: Stripe Checkout ─► webhook → KV check + email dispatch (Resend)
@@ -88,9 +88,9 @@ src/
 
 ## Product positioning
 
-This product **is**: a structured naming tool + trademark + domain due diligence, delivered in 90 seconds for $19.
+This product **is**: a structured naming tool + preliminary trademark and domain screening, delivered in 90 seconds for $19.
 
-This product **is not**: a brand strategy consultant. We don't produce positioning statements, messaging pillars, target audience articulation, tone of voice, or visual identity. Those are classically the strategist's domain (expect $5K+ human engagement for that work).
+This product **is not**: a brand strategy consultant, and not legal clearance. We don't produce positioning statements, messaging pillars, target audience articulation, tone of voice, or visual identity — those are classically the strategist's domain (expect $5K+ human engagement). We don't certify a name as legally available — that requires a qualified trademark attorney; our role is to surface preliminary signals so the founder enters that conversation informed.
 
 Customers who walk in with implicit strategy already (they know their category, audience, personality) and need defensible name candidates are served well. Customers who need strategic foundations should hire a consultant.
 

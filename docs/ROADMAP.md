@@ -17,7 +17,7 @@
 - **CSRF nonce flow** — single-use KV-stored nonce at `/api/auth` to prevent cross-origin checkout hijacking
 - **Stripe reconcile cron** — daily detection of paid sessions missing from KV (webhook-never-arrived failure mode)
 - **PDF export** — `@react-pdf/renderer`, client-side dynamic import
-- **Email-me-a-copy** — optional at paywall, dispatched via Resend, prevents 24h-TTL tab-close data loss
+- **Email-me-a-copy** — optional at paywall, dispatched via Resend, prevents TTL-expiry data loss for users who lose the browser link
 - **Observability** — Pino structured logs, Sentry (conditional on DSN), Slack alerts on actionable failures, cost telemetry per Anthropic call
 
 ## Phase 2a (post-launch, next 3 months)
@@ -86,7 +86,7 @@ These would turn Namewright into a brand-strategy consultant and dilute the core
 - Logo design
 - Brand guidelines PDF
 
-The wedge is **pre-incorporation due diligence** (trademark + domain + name quality signals), not **post-incorporation brand building** (positioning + messaging + identity). Competitors who blend the two are NameCheck's Brand Spark Kit — directly copying their surface area cedes our differentiation.
+The wedge is **pre-incorporation screening** (preliminary trademark + domain + name quality signals), not **post-incorporation brand building** (positioning + messaging + identity), and not legal clearance. Competitors who blend the two are NameCheck's Brand Spark Kit — directly copying their surface area cedes our differentiation.
 
 If customer signal overwhelms, build a **separate product** with its own positioning, not a feature expansion. Deferring the decision to "a future Brand Kit" is how this rule gets eroded.
 
@@ -100,4 +100,4 @@ Included in Tier 2 but only for platforms with free, reliable, official APIs: **
 - **LinkedIn** — completely locked down
 - **Profile-URL HEAD probes** — Vercel IPs reliably blocked by Cloudflare/bot-detection on these platforms; ToS gray area; fragile
 
-Shipping unreliable probes as "verified handle availability" would erode the core "verified data" positioning. Better to ship narrow + honest than broad + flaky.
+Shipping unreliable probes as "verified handle availability" would erode the core "cross-checked data" positioning. Better to ship narrow + honest than broad + flaky.
