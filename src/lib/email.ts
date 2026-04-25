@@ -7,8 +7,15 @@ import logger from './logger'
 // keeps. Returns silently when RESEND_API_KEY is unset so dev and pre-launch
 // deploys don't need a Resend account.
 
-const FROM_ADDRESS = process.env.RESEND_FROM_ADDRESS ?? 'Namewright <reports@namewright.co>'
-const REPLY_TO = process.env.RESEND_REPLY_TO ?? 'support@namewright.co'
+// Read at call time (not module load) — matches the stripe/anthropic lazy pattern
+// so RESEND_FROM_ADDRESS / RESEND_REPLY_TO env vars are always current at send
+// time and not baked as empty-string defaults during any module pre-loading phase.
+function getFromAddress(): string {
+  return process.env.RESEND_FROM_ADDRESS ?? 'Namewright <reports@namewright.co>'
+}
+function getReplyTo(): string {
+  return process.env.RESEND_REPLY_TO ?? 'support@namewright.co'
+}
 
 let _client: Resend | null = null
 function getClient(): Resend | null {
@@ -38,13 +45,12 @@ export async function sendReportEmail(opts: SendReportEmailOpts): Promise<SendRe
     return { ok: false, reason: 'RESEND_API_KEY not set' }
   }
 
-  const { subject, html, text } = renderReportEmail(opts.report)
-
   try {
+    const { subject, html, text } = renderReportEmail(opts.report)
     const result = await client.emails.send({
-      from: FROM_ADDRESS,
+      from: getFromAddress(),
       to: opts.to,
-      replyTo: REPLY_TO,
+      replyTo: getReplyTo(),
       subject,
       html,
       text,
