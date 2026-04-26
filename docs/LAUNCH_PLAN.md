@@ -125,13 +125,13 @@ These are real drafts, not outlines. Edit for voice before posting; do not edit 
 > - Per-TLD domain status with source-by-source attribution (so you know whether a "taken" answer is from one source or three)
 > - Best / Safest / Boldest top-3 framing
 > - 3–5 rejected names with one-line reasons (so you see what got filtered)
-> - PDF export, email-me-a-copy at paywall (24h KV TTL, so the email is the durable artifact)
+> - PDF export, email-me-a-copy at paywall (reports persist in R2 — JSON + PDF — and the email is a founder-friendly fallback if you lose the link)
 >
 > Sample report (full paid-tier render with a fictional brief): **[link to /sample]**
 >
 > $19 launch price, one-shot, no account, no subscription. Stripe Checkout. Paying once because solo founders pre-incorporation are one-shot users — subscription assumes repeat use that doesn't happen at this scale.
 >
-> Stack: Next.js 16 (App Router), Anthropic for the naming + synthesis, Signa for the trademark layer, three-source DNS aggregation, Vercel KV, Resend. Deployed on Vercel.
+> Stack: Next.js 16 (App Router), Anthropic for the naming + synthesis, Signa for the trademark layer, three-source DNS aggregation, Inngest for the async pipeline, Cloudflare R2 for permanent report storage, Postgres + Prisma for user/report records, Vercel KV for transient job state, Resend. Deployed on Vercel.
 >
 > Would love feedback — especially on the report itself. The honest question I want to test: does this give you at least one name you'd seriously consider? If yes I'm on track; if no, I want to know why.
 >
@@ -211,6 +211,10 @@ Verify before posting. Order is rough — the dependencies up top block the post
 | 2   | Disclaimer ≥14px, above the fold or adjacent to primary CTA                                                                                           | Pending (PRD §8 launch gate, see §9)                   | **YES**                  |
 | 3   | Stripe live mode keys in Vercel prod env                                                                                                              | Verify                                                 | **YES**                  |
 | 4   | Stripe webhook endpoint registered for prod URL with prod signing secret                                                                              | Verify                                                 | **YES**                  |
+| 4a  | `DATABASE_URL`, `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET_NAME`, `INNGEST_SIGNING_KEY` set on Vercel Production         | Verify per `docs/DEPLOY_SOP.md` §0 + §1.7              | **YES**                  |
+| 4b  | Inngest cloud app synced (dashboard → Apps → URL = `https://<prod-url>/api/inngest`); `generate-report` function shows status "Ready"                 | Verify in Inngest dashboard                            | **YES**                  |
+| 4c  | Postgres migrations applied (`npx prisma migrate deploy` against prod `DATABASE_URL`)                                                                 | Verify with one paid test checkout (webhook upserts)   | **YES**                  |
+| 4d  | R2 bucket exists and writable (validate by triggering a real generate and confirming `reports/<id>.json` + `reports/<id>.pdf` land)                   | Verify in Cloudflare R2 dashboard                      | **YES**                  |
 | 5   | Refund policy linked from landing footer                                                                                                              | Depends on `docs/REFUND_POLICY.md` (PRD §10 Q2 — open) | **YES**                  |
 | 6   | Plain-English contact email working: support@namewright.co                                                                                            | Verify mail forward + can-reply test                   | **YES**                  |
 | 7   | Terms of Service + Privacy Policy linked from footer                                                                                                  | Verify                                                 | **YES**                  |

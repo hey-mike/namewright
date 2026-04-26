@@ -72,14 +72,14 @@ Broader founders (consumer products, restaurants, clinics, education) may need m
 
 Customer-facing surface area, current state:
 
-| Surface             | Behaviour                                                                                                                                                                                                        |
-| ------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Intake form**     | Description (free-text), personality (5 chips), geography (5 chips), constraints (free-text), TLD selection                                                                                                      |
-| **Free preview**    | 3 candidates, no trademark notes, no domain status — designed for trust + FOMO before paywall                                                                                                                    |
-| **Paid report**     | 8–12 candidates with: name, style, rationale, trademark risk + notes (cross-checked across selected sources), per-TLD domain status, alternates. Top 3 picks with reasoning + next steps. Recommendation summary |
-| **PDF export**      | Client-side render of the full report via `@react-pdf/renderer`                                                                                                                                                  |
-| **Email-me-a-copy** | Optional at paywall — full report HTML emailed via Resend, prevents TTL-expiry data loss for users who lose the browser link                                                                                     |
-| **Pricing**         | $19 one-shot, no account, no subscription. Stripe Checkout, JWT-cookie auth post-payment, KV-stored report (7d TTL)                                                                                              |
+| Surface             | Behaviour                                                                                                                                                                                                                                                            |
+| ------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Intake form**     | Description (free-text), personality (5 chips), geography (5 chips), constraints (free-text), TLD selection                                                                                                                                                          |
+| **Free preview**    | 3 candidates, no trademark notes, no domain status — designed for trust + FOMO before paywall                                                                                                                                                                        |
+| **Paid report**     | 8–12 candidates with: name, style, rationale, trademark risk + notes (cross-checked across selected sources), per-TLD domain status, alternates. Top 3 picks with reasoning + next steps. Recommendation summary                                                     |
+| **PDF export**      | Server-side render via `@react-pdf/renderer` `renderToBuffer` inside the Inngest job, stored alongside JSON in R2; auth-gated download at `/api/report/[id]/pdf` with render-on-demand fallback                                                                      |
+| **Email-me-a-copy** | Optional at paywall — full report HTML emailed via Resend, prevents data loss for users who lose the browser link                                                                                                                                                    |
+| **Pricing**         | $19 one-shot. Stripe Checkout, JWT-cookie auth post-payment. Reports stored in R2 (permanent JSON + PDF). KV holds only the SSE status handle for the async pipeline and the auth nonce. Optional magic-link sign-in unlocks `/my-reports` history (Postgres-backed) |
 
 **Quality guardrails on LLM output (see CLAUDE.md "Accuracy guardrails"):**
 

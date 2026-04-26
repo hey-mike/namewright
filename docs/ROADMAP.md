@@ -16,8 +16,13 @@
 - **Accuracy audit infrastructure** — `scripts/accuracy-audit.mjs` runs 10 curated briefs, ~$1.40/run
 - **CSRF nonce flow** — single-use KV-stored nonce at `/api/auth` to prevent cross-origin checkout hijacking
 - **Stripe reconcile cron** — daily detection of paid sessions missing from KV (webhook-never-arrived failure mode)
-- **PDF export** — `@react-pdf/renderer`, client-side dynamic import
-- **Email-me-a-copy** — optional at paywall, dispatched via Resend, prevents TTL-expiry data loss for users who lose the browser link
+- **PDF export** — `@react-pdf/renderer`, server-side `renderToBuffer` inside the Inngest job, stored as `reports/{id}.pdf` in R2 alongside the JSON; auth-gated download at `/api/report/[id]/pdf` with render-on-demand fallback
+- **Email-me-a-copy** — optional at paywall, dispatched via Resend, prevents data loss for users who lose the browser link
+- **Inngest async pipeline** — `/api/generate` returns 202 with `{ jobId, reportId }` and dispatches `report.generate`; the actual ~90s pipeline (`generateReport` → `saveReport` to R2 → `saveReportPdf` to R2 → `setJobStatus completed`) runs in `src/inngest/functions.tsx`. Frontend polls `/api/status/[jobId]` SSE until completion
+- **R2 storage migration** — JSON reports moved from KV (7d TTL) to R2 (`reports/{id}.json`, permanent). KV now holds only the SSE status handle and the auth nonce
+- **Postgres + Prisma** — `User` + `ReportRecord` tables for durable per-user report history, upserted by the Stripe webhook on paid checkout
+- **Magic-link sign-in** — `POST /api/auth/magic-link` (Resend) + `GET /api/auth/verify` (signs 30-day cookie); gates `/my-reports`
+- **Multi-report user accounts** — `/my-reports` lists all `ReportRecord` rows for the signed-in user (one-shot purchases still work without sign-in)
 - **Observability** — Pino structured logs, Sentry (conditional on DSN), Slack alerts on actionable failures, cost telemetry per Anthropic call
 
 ## Phase 2a (post-launch, next 3 months)
@@ -53,10 +58,9 @@ Prioritized from external review against NameCheck's Brand Spark Kit ($29). Runw
 
 - **Pronunciation field** — add `pronunciation: string` to candidate schema for invented/compound names
 - **Social handle note** — add Instagram / X / LinkedIn handle availability to `topPicks.nextSteps`
-- **Streaming results** — candidates appear progressively as pipeline completes each step (reduces perceived latency)
+- **Streaming results** — candidates appear progressively as pipeline completes each step (reduces perceived latency). Phase 1 SSE wiring (`/api/status/[jobId]`) is in place via the Inngest migration; this item is the per-candidate streaming layer on top.
 - **Feedback loops** — thumbs up/down per candidate, "which name did you actually pick" signal capture post-purchase
 - **Regenerate flow** — refine brief and regenerate without paying again (free re-spin within 24h)
-- **User accounts** — persistent report history across sessions (only if retention data justifies; solo founders pre-incorporation are typically one-shot customers)
 
 ## Complexity cleanup (pending validation)
 

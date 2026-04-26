@@ -73,39 +73,113 @@ Without `RESEND_API_KEY` set, no email goes out (and the URL is not logged). Eit
 
 ## Pipeline architecture
 
+The pipeline is event-driven. `/api/generate` no longer runs synthesis in-band — it
+mints a `jobId` + `reportId`, primes KV, and dispatches an Inngest event. The actual
+work runs in a background function (`src/inngest/functions.tsx`). The frontend
+polls a server-sent-events status endpoint until the job completes, then redirects
+to the paywall preview.
+
 ```
 intake form (IntakeForm.tsx)
   └─► POST /api/generate
-        ├─► inferNiceClass (Anthropic)  ─┐
-        ├─► generateCandidates (Anthropic)─┤── parallel
-        │                                  │
-        │   (homoglyph retry on Cyrillic)  │
-        ├─► checkAllTrademarks (Signa)  ───┤
-        ├─► checkAllEuipoTrademarks (if LD flag on + geography EU/Global)
-        ├─► checkAllDomains (DNS + RDAP + WhoisJSON 3-layer)
-        └─► synthesiseReport (Anthropic)  ── single
-              └─► validateReportData + validateGroundedMarks
-                    └─► auto-fix ranking / prefix / topPicks violations
-  └─► saveReport (KV, 7d TTL)
-  └─► return { reportId, preview }
+        ├─► validate input + nameType allowlist
+        ├─► setJobStatus(jobId, { status: 'pending' })
+        ├─► inngest.send({ name: 'report.generate', data: { jobId, reportId, body, ... } })
+        └─► return { jobId, reportId }   ◄── returns immediately
 
-payment: Stripe Checkout ─► webhook → KV check + email dispatch (Resend)
-access: /api/auth verifies Stripe session + one-time KV nonce → HttpOnly JWT cookie → /results
+  └─► EventSource('/api/status/[jobId]')   ◄── 3s SSE poll, KV-backed
+        ├─► { status: 'pending' } … repeat
+        ├─► { status: 'failed', error } → surface error
+        └─► { status: 'completed', reportId, preview, summary, totalCount }
+              └─► sessionStorage + router.push(`/preview?report_id=…`)
+
+Inngest function `generateReportJob` (steps run independently, retries=0):
+  ├─► step 'set-initial-status'   → KV pending
+  ├─► step 'generate-report'      → inferNiceClass + generateCandidates
+  │                                 + checkAllTrademarks (Signa)
+  │                                 + checkAllEuipoTrademarks (LD flag + EU/Global)
+  │                                 + checkAllDomains (DNS + RDAP + WhoisJSON)
+  │                                 + synthesiseReport
+  │                                 + validateReportData / validateGroundedMarks
+  │                                 + auto-fix ranking / prefix / topPicks
+  ├─► step 'save-report'          → R2 PUT reports/{id}.json
+  ├─► step 'save-report-pdf'      → @react-pdf/renderer → R2 PUT reports/{id}.pdf
+  │                                 (non-fatal — JSON is source of truth)
+  └─► step 'set-completed-status' → KV { status: 'completed', preview, summary, ... }
+
+payment: Stripe Checkout ─► webhook upserts User + ReportRecord (Postgres),
+                            dispatches email (Resend)
+access:  /api/auth verifies Stripe session + one-time KV nonce
+                 → HttpOnly JWT cookie (paid + reportId, optional userId)
+                 → /results?report_id=…
 ```
 
-All upstream I/O uses `Promise.allSettled` with graceful degradation — any single source (Signa, EUIPO, WhoisJSON) failing produces `risk: uncertain` for affected candidates, not a pipeline failure.
+All upstream I/O inside `generate-report` uses `Promise.allSettled` with graceful
+degradation — any single source (Signa, EUIPO, WhoisJSON) failing produces
+`risk: uncertain` for affected candidates, not a pipeline failure.
+
+Inngest dev UI runs at <http://localhost:8288> and is started by
+`npm run dev:inngest` (already wired into `npm run dev`). The Next.js handler at
+`/api/inngest` (`src/app/api/inngest/route.ts`) exposes the function registry via
+`serve({ client, functions })`. `INNGEST_DEV=1` is required in `.env.local` —
+without it, the SDK boots in cloud mode and `PUT /api/inngest` 500s with
+"no signing key found".
+
+### Storage split (R2 vs KV)
+
+- **R2 / S3** is the durable store for generated artifacts: `reports/{id}.json`
+  (canonical structured data) and `reports/{id}.pdf` (immutable artifact). Both
+  are written eagerly inside the Inngest job. `getReport` / `getReportPdf` are
+  `NoSuchKey`-aware and return `null` for missing objects.
+- **KV (Upstash Redis)** is now only short-lived state: auth nonces (24h),
+  magic-link tokens (15min), and job status (24h). The 7d session cookie /
+  JWT TTL still applies to the `session` cookie itself.
+- **Postgres (Prisma)** stores the cross-purchase identity layer: `User` rows
+  and a `ReportRecord` per paid report, joined by `userId`. The webhook upserts
+  both on a paid checkout.
+
+### PDF download
+
+The download button on `/results` is a plain `<a href download>` pointing at
+`/api/report/[id]/pdf`. The handler:
+
+1. verifies the session cookie (`paid=true` and either matching `reportId` or
+   a `userId` that owns the `ReportRecord`),
+2. tries `getReportPdf` from R2 first,
+3. on miss, loads the JSON, renders via `@react-pdf/renderer` `renderToBuffer`,
+   and write-throughs back to R2 so subsequent downloads hit the stored copy.
+
+This means reports generated before the PDF feature shipped are still
+downloadable — the first request takes the render hit, and every request after
+serves the cached object.
 
 ## Folder layout
 
 ```
 src/
   app/          ─ Next.js App Router (routes, pages, API handlers)
-    api/        ─ generate, checkout, auth, webhook, preview, health, cron/stripe-reconcile
-  components/   ─ IntakeForm, FreePreview, FullReport, CandidateRow, ReportPdf, etc.
-  lib/          ─ anthropic (pipeline + prompts), signa, euipo, dns, kv, session, alerts, cost, flags
-  __tests__/    ─ mirrors lib/ and app/api/ — 161 tests
+    api/
+      generate              ─ POST: dispatches Inngest event, returns jobId+reportId
+      status/[jobId]        ─ GET (SSE): streams KV job status every 3s
+      inngest               ─ GET/POST/PUT: Inngest function registry (serve())
+      report/[id]/pdf       ─ GET: auth-gated PDF download (R2 + on-demand fallback)
+      auth                  ─ GET: Stripe-redirect path → single-report cookie
+      auth/magic-link       ─ POST: send 15-min magic-link token (Resend)
+      auth/verify           ─ GET: consume token → 30-day userId session cookie
+      auth/logout           ─ POST: clear session cookie
+      checkout, webhook, preview, health, cron/stripe-reconcile
+    my-reports              ─ user-scoped report list (gated on userId session)
+  inngest/      ─ client.ts (Inngest singleton) + functions.tsx (generateReportJob)
+  components/   ─ IntakeForm, FreePreview, FullReport, CandidateRow, ReportPdfDocument,
+                  Header, HeaderClient, LoginModal, etc.
+  lib/          ─ anthropic (pipeline + prompts), signa, euipo, dns, db (Prisma),
+                  r2 (S3 client + saveReport / getReport / saveReportPdf / getReportPdf),
+                  kv (auth nonces, magic-link tokens, job status), session, alerts,
+                  cost, flags, email, geography, env, logger
+  __tests__/    ─ mirrors lib/ and app/api/
   __mocks__/    ─ jose shim for Jest (ESM-only compat)
   proxy.ts      ─ Next.js 16 middleware (rate limiting on /api/generate)
+prisma/         ─ schema.prisma (User, ReportRecord) + seed.ts (dev accounts)
 ```
 
 ## Key technical decisions
@@ -129,38 +203,76 @@ See `docs/ROADMAP.md` for the Tier 2 ("Brand Kit") expansion path that adds posi
 
 ## Auth flow
 
+There are two parallel auth paths. Both produce the same `session` cookie shape
+(an HS256 JWT verified by `verifySession`) but differ in scope and expiry.
+
+### 1. Stripe-redirect path (single-report access)
+
 ```
 Stripe Checkout ─► success_url with {session_id, report_id, nonce}
   ─► GET /api/auth
-      ├─► consumeAuthNonce(session_id, nonce)  (atomic via kv.getdel)
+      ├─► consumeAuthNonce(session_id, nonce)        (atomic via kv.getdel)
       ├─► stripe.checkout.sessions.retrieve(session_id) — verify paid
-      └─► set HttpOnly JWT cookie → redirect to /results
+      ├─► getReport(reportId) from R2 — verify exists
+      └─► signSession(reportId, paid=true, userId?) — 7d JWT
+            └─► HttpOnly cookie, maxAge 604800
+                  └─► redirect to /results?report_id=…
 ```
 
-Webhook (`/api/webhook`) exists for paid-session reconciliation and email-me-a-copy dispatch, but **does NOT set cookies** — Stripe webhooks hit our server, not the browser.
+If the visitor already has a `userId` session (because they signed in via magic
+link earlier), it's preserved on the new cookie so the same browser tab keeps
+multi-report access alongside the freshly-paid report.
+
+Webhook (`/api/webhook`) handles paid-session reconciliation, upserts the
+`User` + `ReportRecord` rows in Postgres, and dispatches the email-me-a-copy
+attachment via Resend — but **does NOT set cookies** (Stripe webhooks hit our
+server, not the browser).
+
+### 2. Magic-link path (multi-report access)
+
+```
+LoginModal → POST /api/auth/magic-link { email }
+   ├─► prisma.user.findUnique({ email })   ◄── no email enumeration: silent no-op when missing
+   ├─► setMagicLink(token, email)          ◄── 15-min KV TTL
+   └─► sendMagicLinkEmail(email, url)      ◄── no-op when RESEND_API_KEY unset
+
+User clicks link → GET /api/auth/verify?token=…
+   ├─► consumeMagicLink(token)             ◄── atomic, single-use
+   ├─► prisma.user.findUnique({ email })
+   ├─► signUserSession(userId)             ◄── 30d JWT, paid=true, userId set
+   └─► HttpOnly cookie maxAge 30d → redirect to /my-reports
+
+POST /api/auth/logout                      ◄── clears the session cookie
+```
+
+`/my-reports` is server-rendered and looks up `ReportRecord` rows by
+`session.userId`. The PDF route (`/api/report/[id]/pdf`) accepts either
+session shape: a `userId` session must own the report via `ReportRecord`,
+otherwise the cookie's single-`reportId` must match the requested id.
 
 ### Local test accounts
 
-To test the magic link flow locally without checking out via Stripe, seed the local database with:
+To test the magic link flow locally without going through Stripe, seed the
+local database:
 
 ```bash
 npx prisma db seed
 ```
 
-This populates the database with two test accounts:
-
-- `test@example.com`
-- `founder@namewright.co`
-
-You can enter either of these emails into the "Sign In" modal. Check your local terminal (or the Resend dashboard if using a live key) for the magic link URL!
+This creates `test@example.com` and `founder@namewright.co`. Enter either
+into the "Sign In" modal — without `RESEND_API_KEY` set the email is
+suppressed, so look up the token directly via the KV emulator
+(`magic_link:*`) and visit `http://localhost:3000/api/auth/verify?token=…`.
 
 ## Environment variables
 
 See `.env.example` — every variable has an inline comment explaining its purpose and whether it's required or optional.
 
-Required at runtime: `ANTHROPIC_API_KEY`, `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `KV_REST_API_URL`, `KV_REST_API_TOKEN`, `SESSION_SECRET` (≥32 chars), `NEXT_PUBLIC_APP_URL`.
+Required at runtime: `ANTHROPIC_API_KEY`, `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `KV_REST_API_URL`, `KV_REST_API_TOKEN`, `SESSION_SECRET` (≥32 chars), `NEXT_PUBLIC_APP_URL`, `DATABASE_URL` (Postgres, Prisma), `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET_NAME`, and either `R2_ACCOUNT_ID` or `R2_ENDPOINT_URL` (the latter for local Minio).
 
 Optional integrations (each gracefully no-ops when its key is absent): `SIGNA_API_KEY`, `WHOISJSON_API_KEY`, `LAUNCHDARKLY_SDK_KEY`, `EUIPO_CLIENT_ID/SECRET`, `SENTRY_DSN`, `SLACK_ALERT_WEBHOOK_URL`, `RESEND_API_KEY`, `CRON_SECRET`.
+
+Inngest: `INNGEST_DEV=1` is required in `.env.local` for the local dev server to register the app; in production set `INNGEST_SIGNING_KEY` from the Inngest dashboard instead.
 
 ## Context7 — mandatory for library APIs
 

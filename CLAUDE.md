@@ -25,19 +25,38 @@ CLI reuses the same secret for your device, so you set it once and it works ther
 - Tailwind CSS v4 (`@import "tailwindcss"` — NOT `@tailwind base/components/utilities`)
 - `@anthropic-ai/sdk` — lazy singleton via factory function `client()` in `src/lib/anthropic.ts`, reads `ANTHROPIC_API_KEY` at call time (matches `stripe()` pattern so cold-start doesn't fail before `validateEnv()` runs)
 - `stripe` v22 — lazy singleton via factory function in `src/lib/stripe.ts`
-- `@vercel/kv` — Upstash Redis, 7d TTL for reports
-- `jose` v6 — HS256 JWT, 7d expiry
+- `inngest` v4 — event-driven background jobs. Client in `src/inngest/client.ts`, function registry in `src/inngest/functions.tsx`, served via `/api/inngest`. `/api/generate` dispatches `report.generate`; the function runs the synthesis pipeline as discrete `step.run` units (`set-initial-status`, `generate-report`, `save-report`, `save-report-pdf`, `set-completed-status`). Dev UI at <http://localhost:8288>; `INNGEST_DEV=1` is required locally.
+- `@prisma/client` v7 + `@prisma/adapter-pg` — Postgres-backed `User` + `ReportRecord` for the multi-report identity layer. Singleton in `src/lib/db.ts`. Schema in `prisma/schema.prisma`; dev seed in `prisma/seed.ts` (`test@example.com`, `founder@namewright.co`).
+- `@aws-sdk/client-s3` — durable storage for both `reports/{id}.json` and `reports/{id}.pdf`. Lazy singleton in `src/lib/r2.ts`; `forcePathStyle` toggled when `R2_ENDPOINT_URL` is set (Minio dev). `NoSuchKey` is the only "not found" path — every other failure logs and returns `null`.
+- `@react-pdf/renderer` v4 — `renderToBuffer(<ReportPdfDocument />)` in the Inngest `save-report-pdf` step and the on-demand fallback inside `/api/report/[id]/pdf`.
+- `@vercel/kv` — Upstash Redis, now scoped to short-lived state only: auth nonces (24h), magic-link tokens (15min), job status (24h). NOT the report store anymore.
+- `jose` v6 — HS256 JWT. `signSession(reportId, paid, userId?)` is 7d (Stripe-redirect path); `signUserSession(userId)` is 30d (magic-link path).
 
 ## Folder Structure
 
 ```
 src/
-  app/          — routes, pages, API handlers (Next.js App Router)
-  components/   — shared React components
-  lib/          — business logic and external API clients
-  __tests__/    — mirrors lib/ and app/api/
-  __mocks__/    — jose shim for Jest (ESM-only compat)
-  proxy.ts      — Next.js 16 rate limiting (file: proxy.ts, export: proxy)
+  app/                              — Next.js App Router
+    api/
+      generate                      — POST: dispatches Inngest event, returns { jobId, reportId }
+      status/[jobId]                — GET (SSE): KV-backed job status, 3s poll
+      inngest                       — GET/POST/PUT: Inngest function registry
+      report/[id]/pdf               — GET: auth-gated PDF (R2 + render-on-demand fallback)
+      auth                          — GET: Stripe-redirect single-report cookie
+      auth/magic-link               — POST: send 15-min magic-link token
+      auth/verify                   — GET: consume token → 30-day userId session
+      auth/logout                   — POST: clear session cookie
+      checkout, webhook, preview, health, cron/stripe-reconcile
+    my-reports                      — server-rendered list, gated on userId session
+  inngest/                          — client.ts + functions.tsx (generateReportJob)
+  components/                       — IntakeForm, FreePreview, FullReport, ReportPdfDocument,
+                                      Header, HeaderClient, LoginModal, etc.
+  lib/                              — anthropic, signa, euipo, dns, db (Prisma),
+                                      r2 (S3), kv, session, alerts, cost, flags, email
+  __tests__/                        — mirrors lib/ and app/api/
+  __mocks__/                        — jose shim for Jest (ESM-only compat)
+  proxy.ts                          — Next.js 16 rate limiting (file: proxy.ts, export: proxy)
+prisma/                             — schema.prisma + seed.ts
 ```
 
 ## Context7 — Mandatory for Library APIs
@@ -58,8 +77,17 @@ This applies to: Next.js, Anthropic SDK, Stripe, jose, @vercel/kv, Tailwind CSS,
 
 ## Auth Flow
 
-Stripe payment → `/api/auth` GET → sets HttpOnly cookie → redirect to `/results`
-Webhook exists for reliability but does NOT set cookies (goes to Stripe's server, not browser)
+Two parallel paths produce the same `session` cookie shape (HS256 JWT, verified by `verifySession`).
+
+**Stripe-redirect path (single-report, 7d):**
+Stripe payment → `/api/auth` GET → consume KV nonce → verify Stripe `payment_status=paid` → `signSession(reportId, paid, userId?)` → HttpOnly cookie (maxAge 604800) → redirect to `/results?report_id=…`. Preserves an existing `userId` from the cookie if present so a logged-in buyer keeps multi-report access on the same browser.
+
+**Magic-link path (multi-report, 30d):**
+`POST /api/auth/magic-link { email }` → `prisma.user.findUnique` (silent no-op for unknown emails — no enumeration) → `setMagicLink(token, email)` 15-min KV TTL → Resend email. `GET /api/auth/verify?token=…` → `consumeMagicLink` (atomic) → `signUserSession(userId)` 30d JWT → cookie → redirect to `/my-reports`. `POST /api/auth/logout` clears the cookie.
+
+`/api/webhook` upserts `User` + `ReportRecord` in Postgres on paid checkouts and dispatches the email-me-a-copy attachment, but **does NOT set cookies** (Stripe webhooks hit our server, not the browser).
+
+`/api/report/[id]/pdf` accepts either session shape: a `userId` session must own the `ReportRecord`; otherwise the cookie's `reportId` must match the requested id.
 
 ## Product positioning
 
@@ -72,7 +100,9 @@ See `README.md` ("Product positioning") and `docs/ROADMAP.md` (Tier 2 "Brand Kit
 **Required at runtime** (validateEnv throws if missing):
 `ANTHROPIC_API_KEY`, `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`,
 `KV_REST_API_URL`, `KV_REST_API_TOKEN`, `SESSION_SECRET` (≥32 chars),
-`NEXT_PUBLIC_APP_URL`
+`NEXT_PUBLIC_APP_URL`, `DATABASE_URL` (Postgres for Prisma),
+`R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET_NAME`, and either
+`R2_ACCOUNT_ID` (Cloudflare R2) or `R2_ENDPOINT_URL` (local Minio).
 
 **Optional integrations** (each gracefully no-ops when unset):
 
@@ -84,6 +114,11 @@ See `README.md` ("Product positioning") and `docs/ROADMAP.md` (Tier 2 "Brand Kit
 - `SLACK_ALERT_WEBHOOK_URL` — on-call alerts for webhook sig failures, KV save failures, Anthropic credit exhaustion, EUIPO token failures
 - `RESEND_API_KEY`, `RESEND_FROM_ADDRESS` — email-me-a-copy at paywall
 - `CRON_SECRET` — Bearer token for `/api/cron/stripe-reconcile`
+
+**Inngest:**
+
+- `INNGEST_DEV=1` — required in `.env.local` for the local Inngest dev server to register the app. Without it, the SDK boots in cloud mode and `PUT /api/inngest` 500s with "no signing key found".
+- `INNGEST_SIGNING_KEY` — production-only, from the Inngest dashboard.
 
 **Dev-only flags** (refused in production even if set):
 
