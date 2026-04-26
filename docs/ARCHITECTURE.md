@@ -285,6 +285,94 @@ userId cookie (their long-lived session). The `/api/auth` handler reads the
 existing cookie and threads `existingSession?.userId` through `signSession` so
 neither identity is lost when the new cookie overwrites the old.
 
+### 5.1 Stripe-redirect auth flow (post-payment)
+
+```mermaid
+sequenceDiagram
+  autonumber
+  actor User
+  participant Browser
+  participant Checkout as /api/checkout
+  participant Stripe
+  participant Auth as /api/auth
+  participant KV
+  participant R2
+
+  User->>Browser: click "Buy this report"
+  Browser->>Checkout: POST { reportId }
+  Checkout->>KV: set auth-nonce:{sessionId} (24h, single-use)
+  Checkout->>Stripe: create Checkout session<br/>(success_url with sessionId, reportId, nonce)
+  Checkout-->>Browser: 303 → Stripe Checkout
+
+  User->>Stripe: complete payment
+
+  Stripe-->>Browser: 303 → success_url<br/>(carries sessionId, reportId, nonce)
+  Browser->>Auth: GET ?session_id=…&report_id=…&nonce=…
+
+  Auth->>KV: consumeAuthNonce (atomic getdel)
+  Note over Auth,KV: rejects if nonce missing or already used
+  Auth->>Stripe: retrieve(sessionId)
+  Note over Auth,Stripe: must be paid + reportId in metadata
+  Auth->>R2: getReport(reportId)
+
+  Auth->>Auth: signSession(reportId, paid=true,<br/>existingSession?.userId)
+  Auth-->>Browser: Set-Cookie: session=… (7d) + 303 → /results
+  Browser->>User: render /results
+```
+
+The single-use KV nonce is the CSRF guard — without it, an attacker who
+knew a victim's `session_id` could replay the success URL and drop a paid
+cookie into the victim's browser. `kv.getdel` is atomic, so the nonce
+can only be consumed once. **The cookie is set on this browser-facing
+request, not on the Stripe webhook** — see ADR-001 for why the webhook
+path can't set cookies.
+
+### 5.2 Magic-link auth flow (multi-report users)
+
+```mermaid
+sequenceDiagram
+  autonumber
+  actor User
+  participant Browser
+  participant ML as /api/auth/magic-link
+  participant Verify as /api/auth/verify
+  participant PG as Postgres
+  participant KV
+  participant Resend
+
+  User->>Browser: enter email in LoginModal
+  Browser->>ML: POST { email }
+
+  ML->>PG: findUnique({ email })
+
+  alt User exists
+    ML->>KV: setMagicLink(token, email) (15m, single-use)
+    ML->>Resend: send link<br/>(/api/auth/verify?token=…)
+  else Anti-enumeration
+    Note over ML: silent no-op — no KV write, no email sent
+  end
+
+  ML-->>Browser: 200 (always, regardless of branch)
+
+  Resend-->>User: email arrives
+  User->>Browser: click link
+  Browser->>Verify: GET ?token=…
+
+  Verify->>KV: consumeMagicLink (get + del)
+  Note over Verify,KV: rejects if expired or already used
+  Verify->>PG: findUnique({ email })
+  Verify->>Verify: signUserSession(userId)
+  Verify-->>Browser: Set-Cookie: session=… (30d) + 303 → /my-reports
+  Browser->>User: render /my-reports (lists ReportRecords)
+```
+
+The key trick is **anti-enumeration**: `/api/auth/magic-link` always returns
+200, whether or not a `User` row exists for that email. An attacker can't
+probe the user table by varying the email and reading status codes. The
+real outcome (email sent or not) is invisible from the response. The
+single-use 15-minute KV token means a leaked link is useless after one
+click and after the timeout.
+
 ## 6. Data model & lifetimes
 
 | Item               | Storage            | Lifetime             | Notes                                                                                                          |
