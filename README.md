@@ -25,6 +25,37 @@ stripe login               # one-time
 
 If you don't need webhook testing locally: `npm run dev:next` runs Next.js only.
 
+### Local login (dev)
+
+The "View my reports" flow needs a Postgres-backed user. Bring up the local stack and seed the two dev accounts:
+
+```bash
+docker compose up -d                # postgres, redis, kv-emulator, minio
+npx prisma migrate dev              # apply schema to local postgres
+npm run seed                        # creates seeded users
+```
+
+Seeded user accounts (`prisma/seed.ts`):
+
+| Email                   | Purpose                    |
+| ----------------------- | -------------------------- |
+| `test@example.com`      | generic dev test account   |
+| `founder@namewright.co` | founder-facing dev account |
+
+Docker-compose service credentials (`docker-compose.yml`) — these match the values in `.env.local`:
+
+| Service       | Host             | Credentials                                  | Used by                               |
+| ------------- | ---------------- | -------------------------------------------- | ------------------------------------- |
+| Postgres      | `localhost:5434` | `test-user` / `test-password` / `namewright` | Prisma (`DATABASE_URL`)               |
+| Redis         | `localhost:6380` | (no auth)                                    | backs the KV emulator                 |
+| KV emulator   | `localhost:8079` | token `test-token`                           | `KV_REST_API_URL/TOKEN`               |
+| Minio (S3)    | `localhost:9000` | `test-account` / `test-secret`               | R2 (`R2_*`), bucket `namewright-test` |
+| Minio console | `localhost:9001` | `test-account` / `test-secret`               | UI for inspecting R2 objects          |
+
+To sign in, click "View my reports" → enter one of the emails above. `/api/auth/magic-link` only sends to addresses that already exist in the `User` table, so unseeded emails silently no-op (by design — prevents email enumeration).
+
+Without `RESEND_API_KEY` set, no email goes out (and the URL is not logged). Either set `RESEND_API_KEY` in `.env.local`, or read the token directly from KV (`magic-link:*` keys map token → email) and visit `http://localhost:3000/api/auth/verify?token=<token>`.
+
 **Skipping paid APIs during local debugging:** set `DEV_MOCK_PIPELINE=1` in `.env.local` to return a canned report fixture instead of calling Anthropic + Signa + EUIPO + WhoisJSON. Cuts each end-to-end test cycle from ~$0.25 and 90s to $0 and 200ms. The in-app toggle pill (top-right, dev-only) overrides per-request via the `x-dev-mock-pipeline` header. Guarded to refuse running in production even if set.
 
 ## Core scripts

@@ -1,0 +1,65 @@
+version: '3.8'
+
+services:
+  # Mock Cloudflare R2 (S3-compatible object storage)
+  minio:
+    image: minio/minio:latest
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      - MINIO_ROOT_USER=test-account
+      - MINIO_ROOT_PASSWORD=test-secret
+    command: server /data --console-address ":9001"
+    volumes:
+      - minio_data:/data
+
+  # Auto-creates the R2 bucket in Minio on startup.
+  # Uses `mc alias set` (the `mc config host add` form was removed in newer mc images)
+  # and chains with `&&` so any failure aborts and surfaces a non-zero exit.
+  # `mb --ignore-existing` keeps it idempotent across restarts.
+  minio-createbucket:
+    image: minio/mc:latest
+    depends_on:
+      - minio
+    entrypoint: >
+      /bin/sh -ec "
+      until /usr/bin/mc alias set myminio http://minio:9000 test-account test-secret >/dev/null 2>&1; do sleep 1; done &&
+      /usr/bin/mc mb --ignore-existing myminio/namewright-test &&
+      /usr/bin/mc anonymous set public myminio/namewright-test
+      "
+
+  # Standard Redis backing store
+  redis:
+    image: redis:alpine
+    ports:
+      - "6380:6379"
+
+  # PostgreSQL database for permanent records
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_USER: test-user
+      POSTGRES_PASSWORD: test-password
+      POSTGRES_DB: namewright
+    ports:
+      - "5434:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  # Vercel KV REST API Emulator
+  # Converts REST HTTP requests from @vercel/kv into Redis TCP commands
+  kv-emulator:
+    image: hiett/serverless-redis-http:latest
+    ports:
+      - "8079:80"
+    environment:
+      - SRH_MODE=env
+      - SRH_TOKEN=test-token
+      - SRH_CONNECTION_STRING=redis://redis:6379
+    depends_on:
+      - redis
+
+volumes:
+  minio_data:
+  postgres_data:
