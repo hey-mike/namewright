@@ -70,6 +70,38 @@ export async function sendReportEmail(opts: SendReportEmailOpts): Promise<SendRe
   }
 }
 
+export async function sendMagicLinkEmail(to: string, url: string): Promise<boolean> {
+  const client = getClient()
+  if (!client) {
+    logger.warn('RESEND_API_KEY not set. Cannot send magic link.')
+    return false
+  }
+
+  try {
+    const result = await client.emails.send({
+      from: getFromAddress(),
+      to,
+      replyTo: getReplyTo(),
+      subject: 'Sign in to Namewright',
+      html: `<p>Click the link below to sign in and view your reports:</p><p><a href="${escapeHtml(url)}">${escapeHtml(url)}</a></p><p>This link expires in 15 minutes.</p>`,
+      text: `Click the link below to sign in and view your reports:\n\n${url}\n\nThis link expires in 15 minutes.`,
+    })
+
+    if (result.error) {
+      logger.warn({ err: result.error.message }, 'Resend rejected magic link email')
+      return false
+    }
+
+    return true
+  } catch (err) {
+    logger.warn(
+      { err: err instanceof Error ? err.message : String(err) },
+      'magic link email send threw'
+    )
+    return false
+  }
+}
+
 interface RenderedEmail {
   subject: string
   html: string

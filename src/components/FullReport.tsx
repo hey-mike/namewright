@@ -17,7 +17,7 @@ const VERIFY_LINKS = [
   { label: 'WHOIS domain lookup', url: 'https://www.whois.com/whois/' },
 ]
 
-export function FullReport({ report }: { report: ReportData }) {
+export function FullReport({ report, reportId }: { report: ReportData; reportId?: string }) {
   const today = new Date().toLocaleDateString('en-GB', {
     year: 'numeric',
     month: 'long',
@@ -113,7 +113,7 @@ export function FullReport({ report }: { report: ReportData }) {
           (—) indicates the source returned no data.
         </p>
         {report.candidates.map((c, i) => (
-          <CandidateRow key={c.name} c={c} index={i} defaultOpen={i < 3} />
+          <CandidateRow key={c.name} c={c} index={i} />
         ))}
       </section>
 
@@ -217,7 +217,7 @@ export function FullReport({ report }: { report: ReportData }) {
         style={{ borderTop: '1px solid var(--color-border)' }}
       >
         <div className="flex gap-3">
-          <PdfExportButton report={report} />
+          {reportId && <PdfExportButton reportId={reportId} />}
           <Link
             href="/"
             className="px-4 py-2 text-sm font-medium rounded-md inline-flex items-center gap-2"

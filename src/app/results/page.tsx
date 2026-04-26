@@ -1,7 +1,7 @@
 import { cookies } from 'next/headers'
 import { redirect } from 'next/navigation'
 import { verifySession } from '@/lib/session'
-import { getReport } from '@/lib/kv'
+import { getReport } from '@/lib/r2'
 import { FullReport } from '@/components/FullReport'
 
 // Next.js 15: searchParams is a Promise in server components
@@ -18,7 +18,24 @@ export default async function ResultsPage({ searchParams }: Props) {
   const token = cookieStore.get('session')?.value ?? ''
   const session = await verifySession(token)
 
-  if (!session || !session.paid || session.reportId !== reportId) {
+  if (!session || !session.paid) {
+    redirect(`/preview?report_id=${reportId}`)
+  }
+
+  let isAuthorized = false
+  if (session.userId) {
+    const { prisma } = await import('@/lib/db')
+    const record = await prisma.reportRecord.findUnique({
+      where: { id: reportId },
+    })
+    if (record && record.userId === session.userId) {
+      isAuthorized = true
+    }
+  } else if (session.reportId === reportId) {
+    isAuthorized = true
+  }
+
+  if (!isAuthorized) {
     redirect(`/preview?report_id=${reportId}`)
   }
 
@@ -46,7 +63,7 @@ export default async function ResultsPage({ searchParams }: Props) {
           {report.candidates.length} candidates · trademark research included
         </span>
       </header>
-      <FullReport report={report} />
+      <FullReport report={report} reportId={reportId} />
     </div>
   )
 }
