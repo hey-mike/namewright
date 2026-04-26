@@ -63,6 +63,12 @@ const VALID_PROPOSALS = Array.from({ length: 8 }, (_, i) => ({
   rationale: 'Strategic rationale here.',
 }))
 
+const MOCK_FILTERED_CANDIDATES = [
+  { name: 'Rejected1', reason: 'Too generic.' },
+  { name: 'Rejected2', reason: 'Trademark crowding.' },
+  { name: 'Rejected3', reason: 'Phonetic ambiguity.' },
+]
+
 function makeToolResponse(name: string, input: unknown) {
   return {
     content: [{ type: 'tool_use', id: 'call_123', name, input }],
@@ -283,9 +289,12 @@ describe('generateCandidates', () => {
     mockCreate = jest.fn()
   })
 
-  it('returns CandidateProposal[] on success', async () => {
+  it('returns proposals and filteredCandidates on success', async () => {
     mockCreate.mockResolvedValue(
-      makeToolResponse('record_candidates', { candidates: MOCK_PROPOSALS })
+      makeToolResponse('record_candidates', {
+        candidates: MOCK_PROPOSALS,
+        filteredCandidates: MOCK_FILTERED_CANDIDATES,
+      })
     )
 
     const result = await generateCandidates({
@@ -296,14 +305,20 @@ describe('generateCandidates', () => {
       nameType: 'company',
     })
 
-    expect(result).toHaveLength(8)
-    expect(result[0].name).toBe('Brand0')
+    expect(result.proposals).toHaveLength(8)
+    expect(result.filteredCandidates).toHaveLength(3)
+    expect(result.proposals[0].name).toBe('Brand0')
     expect(mockCreate).toHaveBeenCalledWith(expect.objectContaining({ model: 'claude-sonnet-4-6' }))
   })
 
   it('throws when model returns fewer than 5 candidates', async () => {
     const tooFew = MOCK_PROPOSALS.slice(0, 3)
-    mockCreate.mockResolvedValue(makeToolResponse('record_candidates', { candidates: tooFew }))
+    mockCreate.mockResolvedValue(
+      makeToolResponse('record_candidates', {
+        candidates: tooFew,
+        filteredCandidates: MOCK_FILTERED_CANDIDATES,
+      })
+    )
 
     await expect(
       generateCandidates({
@@ -340,9 +355,12 @@ describe('generateCandidates', () => {
     // Use a tiny retry-after so the test doesn't sit on the default 30s delay.
     rateLimit.headers = { 'retry-after': '0.001' }
 
-    mockCreate
-      .mockRejectedValueOnce(rateLimit)
-      .mockResolvedValueOnce(makeToolResponse('record_candidates', { candidates: MOCK_PROPOSALS }))
+    mockCreate.mockRejectedValueOnce(rateLimit).mockResolvedValueOnce(
+      makeToolResponse('record_candidates', {
+        candidates: MOCK_PROPOSALS,
+        filteredCandidates: MOCK_FILTERED_CANDIDATES,
+      })
+    )
 
     const result = await generateCandidates({
       description: 'x',
@@ -352,7 +370,7 @@ describe('generateCandidates', () => {
       nameType: 'company',
     })
 
-    expect(result).toHaveLength(8)
+    expect(result.proposals).toHaveLength(8)
     expect(mockCreate).toHaveBeenCalledTimes(2)
   })
 
@@ -365,9 +383,17 @@ describe('generateCandidates', () => {
     ]
     mockCreate
       .mockResolvedValueOnce(
-        makeToolResponse('record_candidates', { candidates: homoglyphProposals })
+        makeToolResponse('record_candidates', {
+          candidates: homoglyphProposals,
+          filteredCandidates: MOCK_FILTERED_CANDIDATES,
+        })
       )
-      .mockResolvedValueOnce(makeToolResponse('record_candidates', { candidates: MOCK_PROPOSALS }))
+      .mockResolvedValueOnce(
+        makeToolResponse('record_candidates', {
+          candidates: MOCK_PROPOSALS,
+          filteredCandidates: MOCK_FILTERED_CANDIDATES,
+        })
+      )
 
     const result = await generateCandidates({
       description: 'x',
@@ -377,7 +403,7 @@ describe('generateCandidates', () => {
       nameType: 'company',
     })
 
-    expect(result).toHaveLength(8)
+    expect(result.proposals).toHaveLength(8)
     expect(mockCreate).toHaveBeenCalledTimes(2)
     // Confirm the retry carried the ASCII caveat in the user message
     const retryCall = mockCreate.mock.calls[1][0]
