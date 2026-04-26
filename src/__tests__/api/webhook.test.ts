@@ -9,6 +9,13 @@ jest.mock('@/lib/stripe', () => ({
 jest.mock('@/lib/env', () => ({
   validateEnv: jest.fn(),
 }))
+jest.mock('@/lib/db', () => ({
+  prisma: {
+    user: {
+      upsert: jest.fn().mockResolvedValue({ id: 'user-test', email: 'buyer@example.com' }),
+    },
+  },
+}))
 
 import stripe from '@/lib/stripe'
 import { POST } from '@/app/api/webhook/route'

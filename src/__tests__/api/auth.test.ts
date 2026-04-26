@@ -4,19 +4,27 @@ jest.mock('@/lib/stripe', () => ({
 }))
 jest.mock('@/lib/session', () => ({
   signSession: jest.fn(),
+  verifySession: jest.fn(),
+}))
+jest.mock('next/headers', () => ({
+  cookies: jest.fn(),
 }))
 jest.mock('@/lib/env', () => ({
   validateEnv: jest.fn(),
 }))
 jest.mock('@/lib/kv', () => ({
-  getReport: jest.fn(),
   consumeAuthNonce: jest.fn(),
+}))
+jest.mock('@/lib/r2', () => ({
+  getReport: jest.fn(),
 }))
 
 import { NextRequest } from 'next/server'
+import { cookies } from 'next/headers'
 import stripe from '@/lib/stripe'
-import { signSession } from '@/lib/session'
-import { consumeAuthNonce, getReport } from '@/lib/kv'
+import { signSession, verifySession } from '@/lib/session'
+import { consumeAuthNonce } from '@/lib/kv'
+import { getReport } from '@/lib/r2'
 import { GET } from '@/app/api/auth/route'
 
 const BASE_URL = 'http://localhost:3000'
@@ -44,6 +52,8 @@ function mockStripeSession(overrides: object = {}) {
 describe('GET /api/auth', () => {
   beforeEach(() => {
     ;(signSession as jest.Mock).mockResolvedValue('signed-token')
+    ;(verifySession as jest.Mock).mockReset().mockResolvedValue(null)
+    ;(cookies as jest.Mock).mockResolvedValue({ get: jest.fn().mockReturnValue(undefined) })
     ;(getReport as jest.Mock).mockResolvedValue({
       summary: 'mock',
       candidates: [],
@@ -68,7 +78,7 @@ describe('GET /api/auth', () => {
     expect(cookie).toContain('session=signed-token')
     expect(cookie).toContain('HttpOnly')
     expect(cookie.toLowerCase()).toContain('samesite=lax')
-    expect(signSession).toHaveBeenCalledWith('report-123', true)
+    expect(signSession).toHaveBeenCalledWith('report-123', true, undefined)
     expect(consumeAuthNonce).toHaveBeenCalledWith('cs_test_abc', 'nonce-xyz')
   })
 
