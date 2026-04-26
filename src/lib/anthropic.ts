@@ -602,6 +602,20 @@ export function validateReportData(data: unknown): ReportData {
 
   if (typeof d.summary !== 'string' || !d.summary) throw new Error('Missing or invalid summary')
   if (typeof d.recommendation !== 'string') throw new Error('Missing recommendation')
+
+  // NEW Phase 2: Validate rejectedCandidates
+  if (d.rejectedCandidates !== undefined) {
+    if (!Array.isArray(d.rejectedCandidates)) throw new Error('rejectedCandidates must be an array')
+    for (const [i, r] of d.rejectedCandidates.entries()) {
+      if (!r || typeof r !== 'object') throw new Error(`rejectedCandidates[${i}] is not an object`)
+      const candidate = r as Record<string, unknown>
+      if (typeof candidate.name !== 'string' || !candidate.name)
+        throw new Error(`rejectedCandidates[${i}].name missing`)
+      if (typeof candidate.reason !== 'string' || !candidate.reason)
+        throw new Error(`rejectedCandidates[${i}].reason missing`)
+    }
+  }
+
   if (!Array.isArray(d.candidates) || d.candidates.length === 0)
     throw new Error('candidates must be a non-empty array')
   if (!Array.isArray(d.topPicks)) throw new Error('topPicks must be an array')
@@ -644,6 +658,37 @@ export function validateReportData(data: unknown): ReportData {
     domains.tlds = normalizedTlds
     if (!Array.isArray(domains.alternates))
       throw new Error(`candidates[${i}].domains.alternates missing`)
+
+    // NEW Phase 2: Validate scores
+    if (candidate.scores !== undefined) {
+      if (!candidate.scores || typeof candidate.scores !== 'object')
+        throw new Error(`candidates[${i}].scores is not an object`)
+      const scores = candidate.scores as Record<string, unknown>
+      const requiredScores = [
+        'nameQuality',
+        'strategicFit',
+        'trademarkSignal',
+        'domainSignal',
+        'differentiation',
+        'expansionPotential',
+      ]
+      for (const s of requiredScores) {
+        if (typeof scores[s] !== 'number')
+          throw new Error(`candidates[${i}].scores.${s} missing or invalid`)
+      }
+    }
+
+    // NEW Phase 2: Validate mechanism
+    if (candidate.mechanism !== undefined && typeof candidate.mechanism !== 'string') {
+      throw new Error(`candidates[${i}].mechanism must be a string`)
+    }
+
+    // NEW Phase 2: Validate triadLabel
+    if (candidate.triadLabel !== undefined && candidate.triadLabel !== null) {
+      if (!['safe', 'bold', 'best'].includes(candidate.triadLabel as string)) {
+        throw new Error(`candidates[${i}].triadLabel invalid: ${candidate.triadLabel}`)
+      }
+    }
   }
 
   // Cross-cutting invariants (ranking, prefix, topPicks integrity) — must
@@ -942,6 +987,9 @@ const SYNTHESISE_REPORT_PROMPT = `You are a brand strategy expert. You have been
 - Copy domain status values exactly as provided — do not alter them.
 - For each TLD marked as "taken" or "likely taken", suggest 2-3 creative alternate domain strings (e.g. getbrandname.com, trybrandname.io). Leave "alternates" as an empty array if no TLD is taken or likely taken.
 - Select the 3 candidates with the best combined trademark safety and domain availability as topPicks. If fewer than 3 candidates are clearly defensible, include only those that are and explain the constraint in "reasoning".
+- 6-DIMENSION SCORING: Evaluate every candidate from 1 to 10 across: Name Quality, Strategic Fit, Trademark Signal, Domain Signal, Differentiation, and Expansion Potential.
+- PHONETIC MECHANISM: For every rationale, include a sentence (labeled as "Mechanism:") explaining the linguistic or phonetic reason the name works for this brand.
+- DECISION TRIAD: From your top 3 picks, identify exactly one as "The Safe Bet" (lowest risk), one as "The Bold Move" (highest impact), and one as "The Best All-Rounder". Assign "safe", "bold", or "best" to triadLabel.
 - A candidate is **unusable** if EVERY TLD status is "taken" or "likely taken" (zero available/uncertain TLDs). Unusable candidates:
   - MUST be ranked at the bottom of the candidates array.
   - MUST have their rationale prefixed with exactly: "Domain unavailable — naming inspiration only. " followed by the normal 2-3 sentence rationale.
@@ -1003,11 +1051,17 @@ ${domainLines}`
       ? '\n\nIMPORTANT: Nice class inference fell back to the default (Class 42 — software/SaaS). If the product is NOT software, advise the user in the recommendation field to confirm the correct Nice class with a trademark attorney before filing, since the trademark search results above may not reflect the right class.'
       : ''
 
+  const rejectedLines = opts.rejectedCandidates?.length
+    ? `\n\nRejected candidates (for the "Filtered" section — return these as-is in rejectedCandidates):\n${opts.rejectedCandidates
+        .map((c) => `- ${c.name}: ${c.reason}`)
+        .join('\n')}`
+    : ''
+
   const userMessage = `Product: ${req.description}
 Name type: ${req.nameType === 'product' ? 'product within an existing company' : 'company entity'}
 Brand personality: ${req.personality}
 Constraints: ${req.constraints || 'none'}
-Primary market: ${req.geography}${niceClassCaveat}
+Primary market: ${req.geography}${niceClassCaveat}${rejectedLines}
 
 Verified candidates:
 
@@ -1076,6 +1130,34 @@ Produce the final brand name report as JSON.`
                           },
                           required: ['tlds', 'alternates'],
                         },
+                        scores: {
+                          type: 'object',
+                          properties: {
+                            nameQuality: { type: 'number', minimum: 1, maximum: 10 },
+                            strategicFit: { type: 'number', minimum: 1, maximum: 10 },
+                            trademarkSignal: { type: 'number', minimum: 1, maximum: 10 },
+                            domainSignal: { type: 'number', minimum: 1, maximum: 10 },
+                            differentiation: { type: 'number', minimum: 1, maximum: 10 },
+                            expansionPotential: { type: 'number', minimum: 1, maximum: 10 },
+                          },
+                          required: [
+                            'nameQuality',
+                            'strategicFit',
+                            'trademarkSignal',
+                            'domainSignal',
+                            'differentiation',
+                            'expansionPotential',
+                          ],
+                        },
+                        mechanism: {
+                          type: 'string',
+                          description: 'Linguistic rationale (prefix with "Mechanism:")',
+                        },
+                        triadLabel: {
+                          type: 'string',
+                          enum: ['safe', 'bold', 'best'],
+                          nullable: true,
+                        },
                       },
                       required: [
                         'name',
@@ -1084,6 +1166,8 @@ Produce the final brand name report as JSON.`
                         'trademarkRisk',
                         'trademarkNotes',
                         'domains',
+                        'scores',
+                        'mechanism',
                       ],
                     },
                   },
@@ -1103,8 +1187,25 @@ Produce the final brand name report as JSON.`
                     type: 'string',
                     description: '1-2 sentences on the top 1-2 to pursue first',
                   },
+                  rejectedCandidates: {
+                    type: 'array',
+                    items: {
+                      type: 'object',
+                      properties: {
+                        name: { type: 'string' },
+                        reason: { type: 'string' },
+                      },
+                      required: ['name', 'reason'],
+                    },
+                  },
                 },
-                required: ['summary', 'candidates', 'topPicks', 'recommendation'],
+                required: [
+                  'summary',
+                  'candidates',
+                  'topPicks',
+                  'recommendation',
+                  'rejectedCandidates',
+                ],
               },
             },
           ],
