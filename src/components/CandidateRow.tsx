@@ -6,6 +6,12 @@ const formatScoreKey = (key: string) => {
   return key.replace(/([A-Z])/g, ' $1').toLowerCase()
 }
 
+const getSignalColor = (status: string | null) => {
+  if (status === 'available' || status === 'enotfound') return 'bg-emerald-500'
+  if (status === 'taken') return 'bg-red-500'
+  return 'bg-gray-300'
+}
+
 export function CandidateRow({
   c,
   index,
@@ -117,27 +123,53 @@ export function CandidateRow({
             <span className="text-[#787774]">Domains Checked</span>
           </div>
           <div className="flex gap-1.5">
-            {Object.entries(c.domains.tlds).map(([tld, status]) => (
-              <div
-                key={tld}
-                className="h-1.5 bg-[#EAEAEA] rounded-full w-full overflow-hidden relative group"
-              >
+            {Object.entries(c.domains.tlds).map(([tld, status]) => {
+              const signals = c.domains.tldSignals?.[tld]
+
+              if (signals) {
+                return (
+                  <div key={tld} className="flex-1 relative group">
+                    <div className="flex gap-[1px] h-2">
+                      <div className={`flex-1 ${getSignalColor(signals.dns)}`} />
+                      <div className={`flex-1 ${getSignalColor(signals.rdap)}`} />
+                      <div className={`flex-1 ${getSignalColor(signals.registrar)}`} />
+                    </div>
+                    {/* Tooltip for domain name */}
+                    <div className="absolute bottom-full mb-1 left-1/2 -translate-x-1/2 hidden group-hover:block bg-[#111111] text-white text-[9px] mono px-2 py-1 rounded-sm whitespace-nowrap z-10">
+                      .{tld}: {status.charAt(0).toUpperCase() + status.slice(1)}
+                    </div>
+                  </div>
+                )
+              }
+
+              return (
                 <div
-                  className={`h-full w-full ${
-                    status === 'available'
-                      ? 'bg-emerald-500'
-                      : status === 'uncertain'
-                        ? 'bg-gray-400'
-                        : 'bg-red-500'
-                  }`}
-                />
-                {/* Tooltip for domain name */}
-                <div className="absolute bottom-full mb-1 left-1/2 -translate-x-1/2 hidden group-hover:block bg-[#111111] text-white text-[9px] mono px-2 py-1 rounded-sm whitespace-nowrap z-10">
-                  .{tld}: {status.charAt(0).toUpperCase() + status.slice(1)}
+                  key={tld}
+                  className="h-1.5 bg-[#EAEAEA] rounded-full w-full overflow-hidden relative group"
+                >
+                  <div
+                    className={`h-full w-full ${
+                      status === 'available'
+                        ? 'bg-emerald-500'
+                        : status === 'uncertain'
+                          ? 'bg-gray-400'
+                          : 'bg-red-500'
+                    }`}
+                  />
+                  {/* Tooltip for domain name */}
+                  <div className="absolute bottom-full mb-1 left-1/2 -translate-x-1/2 hidden group-hover:block bg-[#111111] text-white text-[9px] mono px-2 py-1 rounded-sm whitespace-nowrap z-10">
+                    .{tld}: {status.charAt(0).toUpperCase() + status.slice(1)}
+                  </div>
                 </div>
-              </div>
-            ))}
+              )
+            })}
           </div>
+          {c.domains.tldSignals && (
+            <div className="mt-2 flex items-center gap-1 text-[8px] mono text-[#787774] uppercase">
+              <div className="w-1 h-2 bg-gray-300" />
+              <span>Source Layers: DNS, RDAP, Registrar</span>
+            </div>
+          )}
         </div>
       </div>
     </div>
