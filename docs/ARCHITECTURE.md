@@ -479,5 +479,7 @@ Drawn from the 2026-04-24 audits captured in `README.md`:
 - Engineering conventions: `CLAUDE.md`, `AGENTS.md`
 - Cross-boundary rules: `.claude/rules/contracts.md`, `.claude/rules/lib.md`
 - Pipeline mechanics deep-dive: `docs/superpowers/specs/2026-04-22-agent-pipeline-design.md`
-- Auth-flow rationale: `docs/adr/001-auth-cookie-via-browser-redirect.md`
+- Architecture decision records: [`docs/adr/`](adr/README.md)
+  - ADR-001 — [Session cookie set via browser redirect, not webhook](adr/001-auth-cookie-via-browser-redirect.md)
+  - ADR-002 — [Persist PDF alongside JSON in R2](adr/002-persist-pdf-alongside-json.md)
 - Audits & history: `README.md` "Internal audits"

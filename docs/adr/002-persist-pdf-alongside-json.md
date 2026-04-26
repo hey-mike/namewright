@@ -4,6 +4,10 @@
 
 Accepted
 
+## Date
+
+2026-04-26
+
 ## Context
 
 The customer-facing artifact for a paid Namewright report is a PDF. Until this

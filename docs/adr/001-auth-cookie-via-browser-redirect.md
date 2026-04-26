@@ -4,6 +4,10 @@
 
 Accepted
 
+## Date
+
+2026-04-22
+
 ## Context
 
 After a successful Stripe payment, we need to grant the user access to their paid report by setting a session cookie. There are two points in the Stripe flow where we learn a payment succeeded:
@@ -39,3 +43,10 @@ The only way to set a cookie in the user's browser is to respond to a request _f
 - The webhook remains useful for reliability (server-side record-keeping, future fulfillment logic) but must never contain cookie-setting code
 - Any future developer adding "set cookie on payment confirmation" logic must add it to `/api/auth`, not the webhook
 - Tests for the webhook must assert that `set-cookie` is absent from the response
+
+## References
+
+- Implementation: `src/app/api/auth/route.ts`, `src/app/api/checkout/route.ts`, `src/app/api/webhook/route.ts`
+- CSRF guard: `consumeAuthNonce` in `src/lib/kv.ts` (atomic `kv.getdel`)
+- Cookie issuance: `signSession` in `src/lib/session.ts` (HS256 JWT, 7-day expiry)
+- Architecture context: `docs/ARCHITECTURE.md` §5 _Auth model_, §5.1 _Stripe-redirect auth flow_
