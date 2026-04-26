@@ -26,38 +26,51 @@ export async function POST(req: Request) {
   try {
     body = (await req.json()) as Partial<GenerateRequest>
   } catch {
+    log.warn({ event: 'validation_failed', reason: 'invalid_json' }, 'request rejected')
     return NextResponse.json({ error: 'Invalid request body' }, { status: 400 })
   }
 
   if (!body.description || !body.personality || !body.geography) {
+    log.warn({ event: 'validation_failed', reason: 'missing_required' }, 'request rejected')
     return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
   }
 
   if (body.description.length > 1000) {
+    log.warn({ event: 'validation_failed', reason: 'description_too_long' }, 'request rejected')
     return NextResponse.json(
       { error: 'description must be 1000 characters or fewer' },
       { status: 400 }
     )
   }
   if (body.personality.length > 100) {
+    log.warn({ event: 'validation_failed', reason: 'personality_too_long' }, 'request rejected')
     return NextResponse.json(
       { error: 'personality must be 100 characters or fewer' },
       { status: 400 }
     )
   }
   if (body.geography.length > 100) {
+    log.warn({ event: 'validation_failed', reason: 'geography_too_long' }, 'request rejected')
     return NextResponse.json(
       { error: 'geography must be 100 characters or fewer' },
       { status: 400 }
     )
   }
   if (!(PERSONALITY_VALUES as readonly string[]).includes(body.personality)) {
+    log.warn(
+      { event: 'validation_failed', reason: 'personality_not_in_allowlist' },
+      'request rejected'
+    )
     return NextResponse.json(
       { error: `Invalid personality. Must be one of: ${PERSONALITY_VALUES.join(', ')}` },
       { status: 400 }
     )
   }
   if (!(GEOGRAPHY_VALUES as readonly string[]).includes(body.geography)) {
+    log.warn(
+      { event: 'validation_failed', reason: 'geography_not_in_allowlist' },
+      'request rejected'
+    )
     return NextResponse.json(
       { error: `Invalid geography. Must be one of: ${GEOGRAPHY_VALUES.join(', ')}` },
       { status: 400 }
@@ -69,6 +82,10 @@ export async function POST(req: Request) {
   // mirror the personality / geography pattern above.
   const nameTypeRaw = body.nameType ?? 'company'
   if (!(NAME_TYPE_VALUES as readonly string[]).includes(nameTypeRaw)) {
+    log.warn(
+      { event: 'validation_failed', reason: 'nametype_not_in_allowlist' },
+      'request rejected'
+    )
     return NextResponse.json(
       { error: `Invalid nameType. Must be one of: ${NAME_TYPE_VALUES.join(', ')}` },
       { status: 400 }
@@ -76,6 +93,7 @@ export async function POST(req: Request) {
   }
   const nameType = nameTypeRaw as NameType
   if (body.constraints && body.constraints.length > 500) {
+    log.warn({ event: 'validation_failed', reason: 'constraints_too_long' }, 'request rejected')
     return NextResponse.json(
       { error: 'constraints must be 500 characters or fewer' },
       { status: 400 }
@@ -84,12 +102,17 @@ export async function POST(req: Request) {
 
   const tlds = Array.isArray(body.tlds) && body.tlds.length > 0 ? body.tlds : DEFAULT_TLDS
   if (tlds.length > 5) {
+    log.warn({ event: 'validation_failed', reason: 'too_many_tlds' }, 'request rejected')
     return NextResponse.json({ error: 'Maximum 5 domain extensions allowed' }, { status: 400 })
   }
   const invalidTld = tlds.find(
     (t) => !SUPPORTED_TLDS.includes(t as (typeof SUPPORTED_TLDS)[number])
   )
   if (invalidTld) {
+    log.warn(
+      { event: 'validation_failed', reason: 'tld_not_supported', tld: invalidTld },
+      'request rejected'
+    )
     return NextResponse.json(
       { error: `Unsupported domain extension: .${invalidTld}` },
       { status: 400 }

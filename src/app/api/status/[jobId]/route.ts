@@ -1,4 +1,5 @@
 import { getJobStatus } from '@/lib/kv'
+import logger from '@/lib/logger'
 
 export const dynamic = 'force-dynamic'
 
@@ -38,7 +39,14 @@ export async function GET(req: Request, { params }: { params: Promise<{ jobId: s
             break
           }
         } catch (error) {
-          console.error('Failed to get job status:', error)
+          logger.error(
+            {
+              jobId,
+              route: 'status-sse',
+              err: error instanceof Error ? error.message : String(error),
+            },
+            'failed to get job status'
+          )
           sendEvent({ status: 'failed', error: 'Internal Server Error' })
           isFinished = true
           break

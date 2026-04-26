@@ -15,7 +15,7 @@ export const generateReportJob = inngest.createFunction(
     retries: 0,
     triggers: [{ event: 'report.generate' }],
   },
-  async ({ event, step }) => {
+  async ({ event, step, runId, attempt }) => {
     const { body, requestId, jobId, mockPipeline, reportId } = event.data as {
       body: GenerateRequest
       requestId: string
@@ -25,10 +25,20 @@ export const generateReportJob = inngest.createFunction(
     }
 
     const startedAt = Date.now()
-    const log = logger.child({ requestId, jobId, route: 'inngest-generate' })
+    // runId + attempt let us bridge from the Inngest dev UI to our app logs and
+    // see retries explicitly. eventId pins the originating /api/generate call.
+    const log = logger.child({
+      requestId,
+      jobId,
+      runId,
+      attempt,
+      eventId: event.id,
+      route: 'inngest-generate',
+    })
 
     // Step 1: Ensure initial status is set
     await step.run('set-initial-status', async () => {
+      log.info({ event: 'step_started', step: 'set-initial-status' }, 'step started')
       await setJobStatus(jobId, { status: 'pending' })
     })
 
@@ -36,6 +46,7 @@ export const generateReportJob = inngest.createFunction(
     let report
     try {
       report = await step.run('generate-report', async () => {
+        log.info({ event: 'step_started', step: 'generate-report' }, 'step started')
         return await generateReport(
           {
             description: body.description,
@@ -86,6 +97,7 @@ export const generateReportJob = inngest.createFunction(
     // Step 3: Save to permanent storage
     try {
       await step.run('save-report', async () => {
+        log.info({ event: 'step_started', step: 'save-report' }, 'step started')
         await saveReport(reportId, report)
       })
     } catch (err: unknown) {
@@ -114,6 +126,7 @@ export const generateReportJob = inngest.createFunction(
     // on first download. We log + page Slack but don't fail the job.
     try {
       await step.run('save-report-pdf', async () => {
+        log.info({ event: 'step_started', step: 'save-report-pdf' }, 'step started')
         const today = new Date().toLocaleDateString('en-GB', {
           year: 'numeric',
           month: 'long',
@@ -135,6 +148,7 @@ export const generateReportJob = inngest.createFunction(
 
     // Step 4: Mark job as complete
     await step.run('set-completed-status', async () => {
+      log.info({ event: 'step_started', step: 'set-completed-status' }, 'step started')
       await setJobStatus(jobId, {
         status: 'completed',
         reportId,
