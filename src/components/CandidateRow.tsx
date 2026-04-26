@@ -1,6 +1,11 @@
 'use client'
 import type { Candidate } from '@/lib/types'
 
+// Helper for formatting keys
+const formatScoreKey = (key: string) => {
+  return key.replace(/([A-Z])/g, ' $1').toLowerCase()
+}
+
 export function CandidateRow({
   c,
   index,
@@ -25,7 +30,18 @@ export function CandidateRow({
         )}
       </div>
 
-      <p className="text-sm leading-relaxed text-[#787774]">{c.rationale}</p>
+      <div className="space-y-4">
+        <p className="text-sm leading-relaxed text-[#787774]">{c.rationale}</p>
+
+        {c.mechanism && (
+          <p className="text-xs italic text-[#787774] border-l-2 border-[#FF4F00] pl-3 mt-4">
+            <span className="mono text-[9px] font-bold uppercase not-italic block mb-1">
+              Mechanism
+            </span>
+            {c.mechanism}
+          </p>
+        )}
+      </div>
 
       {!previewLocked && (
         <div className="space-y-4 pt-4">
@@ -52,6 +68,23 @@ export function CandidateRow({
               </div>
             </div>
           )}
+        </div>
+      )}
+
+      {/* New Scores Matrix Section */}
+      {c.scores && (
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-6 pt-6 border-t border-[#EAEAEA]">
+          {Object.entries(c.scores).map(([key, value]) => (
+            <div key={key} className="space-y-1">
+              <div className="flex justify-between text-[9px] mono uppercase text-[#787774]">
+                <span>{formatScoreKey(key)}</span>
+                <span className="font-bold text-[#111111]">{value}/10</span>
+              </div>
+              <div className="h-1 bg-[#EAEAEA] w-full">
+                <div className="h-full bg-[#FF4F00]" style={{ width: `${value * 10}%` }} />
+              </div>
+            </div>
+          ))}
         </div>
       )}
 
