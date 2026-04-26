@@ -139,6 +139,21 @@ Stripe Checkout ─► success_url with {session_id, report_id, nonce}
 
 Webhook (`/api/webhook`) exists for paid-session reconciliation and email-me-a-copy dispatch, but **does NOT set cookies** — Stripe webhooks hit our server, not the browser.
 
+### Local test accounts
+
+To test the magic link flow locally without checking out via Stripe, seed the local database with:
+
+```bash
+npx prisma db seed
+```
+
+This populates the database with two test accounts:
+
+- `test@example.com`
+- `founder@namewright.co`
+
+You can enter either of these emails into the "Sign In" modal. Check your local terminal (or the Resend dashboard if using a live key) for the magic link URL!
+
 ## Environment variables
 
 See `.env.example` — every variable has an inline comment explaining its purpose and whether it's required or optional.
