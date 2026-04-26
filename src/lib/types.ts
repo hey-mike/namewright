@@ -29,10 +29,26 @@ export interface CandidateProposal {
   rationale: string
 }
 
+export interface RejectedCandidate {
+  name: string
+  reason: string
+}
+
 export interface Candidate extends CandidateProposal {
   trademarkRisk: 'low' | 'moderate' | 'high' | 'uncertain'
   trademarkNotes: string
   domains: DomainAvailability
+  // NEW Phase 2 Fields
+  scores?: {
+    nameQuality: number // 1-10
+    strategicFit: number // 1-10
+    trademarkSignal: number // 1-10
+    domainSignal: number // 1-10
+    differentiation: number // 1-10
+    expansionPotential: number // 1-10
+  }
+  mechanism?: string // e.g., "The hard 'T' and 'K' sounds imply precision..."
+  triadLabel?: 'safe' | 'bold' | 'best' | null
 }
 
 export interface TopPick {
@@ -46,6 +62,8 @@ export interface ReportData {
   candidates: Candidate[]
   topPicks: TopPick[]
   recommendation: string
+  // NEW Phase 2 Fields
+  rejectedCandidates?: RejectedCandidate[]
 }
 
 export interface GenerateRequest {
