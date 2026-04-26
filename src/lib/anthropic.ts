@@ -764,6 +764,7 @@ const GENERATE_CANDIDATES_PROMPT = `You are a brand naming specialist. Generate 
   - Product names are evaluated within their goods/services class — a product name can coexist with an identical mark in an unrelated class. Phrase rationale and risk framing accordingly.
 - Treat the constraints field as hard requirements. Every candidate must satisfy them (e.g. "max 6 characters" eliminates any name longer than 6 characters; "no acronyms" eliminates the acronym style entirely). If a constraint is contradictory or impossible, do not attempt it — instead generate the best candidates you can and note the conflict in the rationale of affected names.
 - For each candidate write 2-3 sentences of strategic rationale explaining why it fits.
+- TRACK REJECTIONS: Keep track of 3-5 names that you generated but rejected (e.g. too descriptive, too generic, or high trademark risk in your internal model). You will return these separately as "filteredCandidates".
 
 # Output
 Call the record_candidates tool to output your answer.
@@ -784,7 +785,10 @@ const ASCII_ONLY_CAVEAT =
 async function callGenerateCandidatesOnce(
   req: GenerateRequest,
   opts: { requestId?: string; retryReason?: 'homoglyph' }
-): Promise<CandidateProposal[]> {
+): Promise<{
+  proposals: CandidateProposal[]
+  filteredCandidates: import('./types').RejectedCandidate[]
+}> {
   const asciiCaveat = opts.retryReason === 'homoglyph' ? ASCII_ONLY_CAVEAT : ''
   const userMessage = `Product: ${req.description}
 Name type: ${req.nameType === 'product' ? 'product within an existing company' : 'company entity'}
@@ -828,8 +832,25 @@ Generate brand name candidates as a JSON array.`
                   minItems: 8,
                   maxItems: 12,
                 },
+                filteredCandidates: {
+                  type: 'array',
+                  items: {
+                    type: 'object',
+                    properties: {
+                      name: { type: 'string' },
+                      reason: {
+                        type: 'string',
+                        description:
+                          'One sentence reason for rejection (e.g. Trademark crowding, Phonetic ambiguity)',
+                      },
+                    },
+                    required: ['name', 'reason'],
+                  },
+                  minItems: 3,
+                  maxItems: 5,
+                },
               },
-              required: ['candidates'],
+              required: ['candidates', 'filteredCandidates'],
             },
           },
         ],
@@ -848,13 +869,23 @@ Generate brand name candidates as a JSON array.`
     model: SONNET_MODEL,
     usage: response.usage,
   })
-  return parseProposals((toolCall.input as { candidates: unknown[] }).candidates)
+  const input = toolCall.input as {
+    candidates: unknown[]
+    filteredCandidates: import('./types').RejectedCandidate[]
+  }
+  return {
+    proposals: parseProposals(input.candidates),
+    filteredCandidates: input.filteredCandidates,
+  }
 }
 
 export async function generateCandidates(
   req: GenerateRequest,
   opts: { requestId?: string } = {}
-): Promise<CandidateProposal[]> {
+): Promise<{
+  proposals: CandidateProposal[]
+  filteredCandidates: import('./types').RejectedCandidate[]
+}> {
   try {
     return await callGenerateCandidatesOnce(req, opts)
   } catch (err) {
@@ -927,7 +958,11 @@ Valid values for domain TLDs: "available", "taken", "likely taken", "uncertain".
 export async function synthesiseReport(
   req: GenerateRequest,
   verified: VerifiedCandidate[],
-  opts: { requestId?: string; niceClassConfidence?: 'inferred' | 'fallback' } = {}
+  opts: {
+    requestId?: string
+    niceClassConfidence?: 'inferred' | 'fallback'
+    rejectedCandidates?: import('./types').RejectedCandidate[]
+  } = {}
 ): Promise<ReportData> {
   const candidateLines = verified
     .map((v) => {
@@ -1089,6 +1124,12 @@ Produce the final brand name report as JSON.`
       usage: response.usage,
     })
     const report = parseReport(toolCall.input)
+
+    // NEW Phase 2: Pass through rejected candidates from the generation phase.
+    if (opts.rejectedCandidates) {
+      report.rejectedCandidates = opts.rejectedCandidates
+    }
+
     // Merge server-side per-source domain signals into the LLM-produced
     // candidates. The synthesise prompt deliberately doesn't surface
     // signals to the LLM (that would invite hallucinated RDAP/DNS values);
@@ -1154,12 +1195,16 @@ export async function generateReport(
   // inference is cheap (~500ms) so the merged latency is dominated by
   // generateCandidates. inferNiceClass never throws — it falls back to 42.
   let proposals: CandidateProposal[]
+  let filteredCandidates: import('./types').RejectedCandidate[]
   let niceClassResult: NiceClassResult
   try {
-    ;[proposals, niceClassResult] = await Promise.all([
+    const [genRes, ncRes] = await Promise.all([
       generateCandidates(reqWithTlds, { requestId }),
       inferNiceClass(reqWithTlds, { requestId }),
     ])
+    proposals = genRes.proposals
+    filteredCandidates = genRes.filteredCandidates
+    niceClassResult = ncRes
   } catch (err) {
     throw tagStage('generate-candidates', err)
   }
@@ -1253,6 +1298,7 @@ export async function generateReport(
     return await synthesiseReport(reqWithTlds, verified, {
       requestId,
       niceClassConfidence: niceClassResult.confidence,
+      rejectedCandidates: filteredCandidates,
     })
   } catch (err) {
     throw tagStage('synthesise-report', err)
