@@ -32,9 +32,9 @@ export async function proxy(request: NextRequest) {
 
   try {
     const count = await kv.incr(key)
-    if (count === 1) {
-      await kv.expire(key, limit.windowSeconds)
-    }
+    // NX: set TTL only if none exists — no-op on normal requests, recovers
+    // the window if a previous expire call was lost (process crash, KV blip).
+    await kv.expire(key, limit.windowSeconds, 'NX')
 
     if (count > limit.max) {
       const ttl = await kv.ttl(key)

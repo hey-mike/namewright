@@ -8,12 +8,9 @@ import logger from '@/lib/logger'
 
 // Reconciles Stripe paid sessions against KV reports to catch the
 // "webhook never arrived" failure mode (local stripe listen crashed,
-// prod webhook misconfigured, endpoint 5xx'd, etc.). Expected to be
-// invoked by Vercel Cron every 6h with:
+// prod webhook misconfigured, endpoint 5xx'd, etc.). Invoked daily at 03:00
+// UTC by Vercel Cron (see vercel.json: "0 3 * * *") with:
 //   - Header `Authorization: Bearer $CRON_SECRET`
-//
-// Wire up in vercel.ts:
-//   crons: [{ path: '/api/cron/stripe-reconcile', schedule: '0 */6 * * *' }]
 
 const LOOKBACK_SECONDS = 24 * 60 * 60
 const MAX_SESSIONS = 100
@@ -60,7 +57,13 @@ export async function GET(req: Request) {
 
   for (const s of paid) {
     const reportId = s.metadata!.reportId as string
-    const exists = await kv.get(`report:${reportId}`)
+    let exists: unknown
+    try {
+      exists = await kv.get(`report:${reportId}`)
+    } catch (err) {
+      log.warn({ reportId, err: err instanceof Error ? err.message : String(err) }, 'KV get failed during reconcile — skipping session')
+      continue
+    }
     if (!exists) {
       missing.push({
         sessionId: s.id,
