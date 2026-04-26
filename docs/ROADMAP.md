@@ -1,52 +1,30 @@
 # Namewright Roadmap
 
-## Shipped — Phase 1 (MVP, pre-launch)
+## Shipped — Phase 1 (MVP) & Phase 2a (Intelligence & Evidence)
 
 - **Agent pipeline** — inferNiceClass + generateCandidates (parallel), checkAllTrademarks + checkAllEuipoTrademarks + checkAllDomains (parallel), synthesiseReport
+- **"Warm Premium" UI Redesign** ✓ (2026-04-25) — Newsreader/Geist typography, bone/charcoal palette, high-contrast matrix visuals.
+- **Wait-time UX (Split View)** ✓ (2026-04-25) — Immersive terminal log paired with editorial branding tips.
+- **Decision Triad (Safe/Bold/Best)** ✓ (2026-04-25) — Explicit decision framework for top picks.
+- **6-dimension candidate breakdown** ✓ (2026-04-25) — Per-candidate scoring across name quality, fit, trademark, domain, differentiation, and expansion.
+- **Domain confidence matrix** ✓ (2026-04-25) — Exposing RDAP / DNS / Registrar signals per TLD for radical transparency.
+- **Filtered Candidates (Proof of Work)** ✓ (2026-04-25) — Surfacing rejected names with reasons to prove agentic rigor.
+- **Phonetic Mechanisms** ✓ (2026-04-25) — Rationales explicitly explain the linguistic mechanics of the mark.
 - **Trademark coverage** — Signa (USPTO + EUIPO + WIPO) + optional EUIPO direct cross-check (LD flag, EU/Global geos)
 - **Domain coverage** — 3-layer: DNS (Node), RDAP (rdap.org), WhoisJSON (1000/mo free tier)
 - **Nice class inference** — LLM-inferred per brief, falls back to Class 42 (software) on failure
-- **Personality-driven filtering** — 5 personality chips weight name styles (Premium → invented+compound, Bold → invented+metaphorical, etc.)
-- **Constraint adherence** — user can specify hard rules ("max 6 chars", "no acronyms"); prompt treats as hard requirements
-- **Auto-fix validator** — silently corrects LLM ranking rule violations (unusable prefix, bottom-rank, topPicks integrity) with warn-log telemetry
-- **Homoglyph retry** — catches Cyrillic/Greek/full-width Latin slip-ups and retries once with strict ASCII caveat
-- **Cross-source coverage notes** — report transparently surfaces "EUIPO check unavailable" / "Signa-only" / "Cross-verified clear" prefixes
-- **Grounding validator** — detects LLM citing marks not in input conflicts (telemetry-only; upgrade to strip/retry when prod data supports)
-- **Style-distribution validator** — warns when LLM ignores personality weighting (telemetry-only)
-- **Accuracy audit infrastructure** — `scripts/accuracy-audit.mjs` runs 10 curated briefs, ~$1.40/run
-- **CSRF nonce flow** — single-use KV-stored nonce at `/api/auth` to prevent cross-origin checkout hijacking
-- **Stripe reconcile cron** — daily detection of paid sessions missing from KV (webhook-never-arrived failure mode)
-- **PDF export** — `@react-pdf/renderer`, server-side `renderToBuffer` inside the Inngest job, stored as `reports/{id}.pdf` in R2 alongside the JSON; auth-gated download at `/api/report/[id]/pdf` with render-on-demand fallback
-- **Email-me-a-copy** — optional at paywall, dispatched via Resend, prevents data loss for users who lose the browser link
-- **Inngest async pipeline** — `/api/generate` returns 202 with `{ jobId, reportId }` and dispatches `report.generate`; the actual ~90s pipeline (`generateReport` → `saveReport` to R2 → `saveReportPdf` to R2 → `setJobStatus completed`) runs in `src/inngest/functions.tsx`. Frontend polls `/api/status/[jobId]` SSE until completion
-- **R2 storage migration** — JSON reports moved from KV (7d TTL) to R2 (`reports/{id}.json`, permanent). KV now holds only the SSE status handle and the auth nonce
-- **Postgres + Prisma** — `User` + `ReportRecord` tables for durable per-user report history, upserted by the Stripe webhook on paid checkout
-- **Magic-link sign-in** — `POST /api/auth/magic-link` (Resend) + `GET /api/auth/verify` (signs 30-day cookie); gates `/my-reports`
-- **Multi-report user accounts** — `/my-reports` lists all `ReportRecord` rows for the signed-in user (one-shot purchases still work without sign-in)
-- **Observability** — Pino structured logs, Sentry (conditional on DSN), Slack alerts on actionable failures, cost telemetry per Anthropic call
+- **Personality-driven filtering** — 5 personality chips weight name styles
+- **Constraint adherence** — user can specify hard rules ("max 6 chars", "no acronyms")
+- **Intake refinements** ✓ (2026-04-25) — Company vs Product context checkbox + style strength info.
+- **Auto-fix validator** — corrects LLM ranking rule violations
+- **Homoglyph retry** — catches non-ASCII slip-ups
+- **PDF export** — auth-gated download via `@react-pdf/renderer`
+- **Email-me-a-copy** — Resend integration
+- **Inngest async pipeline** — ~90s resilient background processing
+- **Magic-link sign-in** — durable per-user report history
+- **R2 storage** — permanent JSON/PDF storage
 
-## Phase 2a (post-launch, next 3 months)
-
-### Product upgrades from competitive review (2026-04-24)
-
-Prioritized from external review against NameCheck's Brand Spark Kit ($29). Runway is ~16–20 hr of focused work.
-
-1. **Landing reposition — "before you commit" wedge** ✓ (2026-04-24) — H1 + subline reframed around pre-incorporation shortlist vs NameCheck's single-name validation. Differentiates without crossing into consulting scope.
-2. **Domain confidence matrix** — expose RDAP / DNS / WhoisJSON per-source in the report (currently collapsed to single status). Leverages signals we already compute; concrete honesty beats NameCheck's all-"Unknown" screenshot. ~2-3 hr.
-3. **6-dimension candidate breakdown** (replaces the composite "Name Score" originally planned) — per-candidate bands across name quality / strategic fit / trademark signal / domain signal / differentiation / expansion potential. Explainable over false-precision numbers. ~4-6 hr.
-4. **Best / Safest / Boldest triad** replaces single "Top 3 overall" — re-rank same candidate set with different weightings. ~2 hr.
-5. **Rejected-names section** — surface 3–5 filtered candidates with one-line reasons. Signals "we did real work" + educates about trademark strength. ~2 hr.
-6. **Intake refinements** — company-vs-product-name checkbox (materially changes risk framing) + style-strength tooltip (educates on descriptive-vs-distinctive). ~1.5 hr.
-
-### Other Phase 2a
-
-- **Tier 2 "Deeper Due Diligence" report at $49** — extends the $19 due-diligence wedge with: additional trademark jurisdictions (IP Australia, UK IPO direct, WIPO Madrid direct), deeper phonetic/compound fuzzy scan, verifiable social handle coverage (GitHub / Reddit / Bluesky — see "Out of scope" for why the commercially-relevant ones aren't feasible), and a founder launch checklist (domain register → USPTO ITU filing → incorporation). **Explicitly does NOT include positioning statements, messaging pillars, taglines, or brand identity** — those remain permanently out of scope (see below). Gated on week-4 signal: only build if ≥30% of paid customers ask for extensions to the $19 report.
-- **Competitor input field (optional)** — intake form adds "names you want to distinguish from"; flows into generateCandidates as negative constraints. Grounds generation in user's competitive set without requiring Namewright to do positioning analysis.
-- **Tighter rationale prompt** — require each candidate's rationale to connect explicitly to (a) personality, (b) a phonetic/linguistic mechanism, (c) why the category benefits from a name like this. Closes the "arbitrary feel" gap identified in the product review.
-- **TopPicks-only domain check** — reduce `checkAllDomains` calls from 30/report to ~9/report (top 3 candidates × 3 TLDs). 70% WhoisJSON usage reduction. Keeps free tier viable through ~100 reports/month. **Do this before launch if quota becomes blocking.**
-- **Regression eval pipeline** — productionize `scripts/accuracy-audit.mjs` as a weekly cron + Jest-snapshot-style comparison to detect prompt drift
-
-## Phase 2b (volume-driven, month 3+)
+## Phase 2 (post-launch, next 3 months)
 
 - **Multi-provider domain stacking** — add Domainr (10K/mo free) + WhoisXML API (500/mo) + IP2WHOIS (500/mo) as fallbacks; quota-aware routing. Triggered by hitting >200 reports/month on a single provider.
 - **WIPO Madrid direct integration** — adds international coverage beyond Signa's aggregation. Only if customers report missed EU/Asia conflicts.

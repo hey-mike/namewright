@@ -1,6 +1,6 @@
 # Phase 2: High-End Synthesis & Radical Transparency — Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** Transform the $19 report from a list of names into a rigorous, high-density strategic document that proves "Proof of Work" and provides a clear decision framework.
 
@@ -16,7 +16,7 @@
 
 - Modify: `src/lib/types.ts`
 
-- [ ] **Step 1: Update `Candidate` and `ReportData` types**
+- [x] **Step 1: Update `Candidate` and `ReportData` types**
 
 ```typescript
 // Inside src/lib/types.ts
@@ -55,7 +55,7 @@ export interface ReportData {
 }
 ```
 
-- [ ] **Step 2: Verify and Commit**
+- [x] **Step 2: Verify and Commit**
       Run: `npx tsc --noEmit`
       Expected: Passes (ignoring existing warnings in other files).
 
@@ -72,7 +72,7 @@ git commit -m "types: extend Candidate and ReportData for Phase 2 synthesis"
 
 - Modify: `src/lib/anthropic.ts`
 
-- [ ] **Step 1: Update `GENERATE_CANDIDATES_PROMPT` and `record_candidates` tool**
+- [x] **Step 1: Update `GENERATE_CANDIDATES_PROMPT` and `record_candidates` tool**
 
 ```typescript
 // Inside src/lib/anthropic.ts
@@ -100,10 +100,10 @@ filteredCandidates: {
 // Add 'filteredCandidates' to the tool's required array.
 ```
 
-- [ ] **Step 2: Update `generateCandidates` return type and passing logic**
+- [x] **Step 2: Update `generateCandidates` return type and passing logic**
       Update `VerifiedCandidate` interface and the flow to ensure these names reach `synthesiseReport`.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add src/lib/anthropic.ts
@@ -118,7 +118,7 @@ git commit -m "pipeline: update generation prompt to capture filtered candidates
 
 - Modify: `src/lib/anthropic.ts`
 
-- [ ] **Step 1: Update `SYNTHESISE_REPORT_PROMPT`**
+- [x] **Step 1: Update `SYNTHESISE_REPORT_PROMPT`**
 
 ```typescript
 // Inside src/lib/anthropic.ts (approx line 865)
@@ -130,13 +130,13 @@ const SYNTHESISE_REPORT_PROMPT = `... (existing instructions)
 ...`
 ```
 
-- [ ] **Step 2: Update `record_report` tool schema**
+- [x] **Step 2: Update `record_report` tool schema**
       Add `scores`, `mechanism`, `triadLabel` to the item properties in `candidates` array.
       Add `rejectedCandidates` to the top-level properties of the tool input.
 
-- [ ] **Step 3: Update `synthesiseReport` function to handle data passing**
+- [x] **Step 3: Update `synthesiseReport` function to handle data passing**
 
-- [ ] **Step 4: Verify and Commit**
+- [x] **Step 4: Verify and Commit**
 
 ```bash
 git add src/lib/anthropic.ts
@@ -151,7 +151,7 @@ git commit -m "pipeline: update synthesis prompt for 6-dimension scoring and tri
 
 - Modify: `src/components/CandidateRow.tsx`
 
-- [ ] **Step 1: Implement visual matrix and mechanism rendering**
+- [x] **Step 1: Implement visual matrix and mechanism rendering**
 
 ```tsx
 // Inside src/components/CandidateRow.tsx
@@ -191,7 +191,7 @@ const formatScoreKey = (key: string) => {
 }
 ```
 
-- [ ] **Step 2: Commit**
+- [x] **Step 2: Commit**
 
 ```bash
 git add src/components/CandidateRow.tsx
@@ -207,14 +207,14 @@ git commit -m "feat: render candidate score matrix and linguistic mechanism"
 - Modify: `src/components/FullReport.tsx`
 - Create: `src/components/RejectedNames.tsx`
 
-- [ ] **Step 1: Add Triad Badges to Top Picks in `FullReport.tsx`**
+- [x] **Step 1: Add Triad Badges to Top Picks in `FullReport.tsx`**
 
-- [ ] **Step 2: Create `RejectedNames.tsx` component**
+- [x] **Step 2: Create `RejectedNames.tsx` component**
       A monochromatic section showing `report.rejectedCandidates`.
 
-- [ ] **Step 3: Integrate into `FullReport.tsx`**
+- [x] **Step 3: Integrate into `FullReport.tsx`**
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add src/components/FullReport.tsx src/components/RejectedNames.tsx
@@ -229,9 +229,9 @@ git commit -m "feat: implement decision triad badges and filtered candidates sec
 
 - Modify: `src/components/CandidateRow.tsx`
 
-- [ ] **Step 1: Update "Domains Checked" to show raw signals (DNS/RDAP/Whois)**
+- [x] **Step 1: Update "Domains Checked" to show raw signals (DNS/RDAP/Whois)**
 
-- [ ] **Step 2: Verify and Commit**
+- [x] **Step 2: Verify and Commit**
       Run: `npm run test`
 
 ```bash

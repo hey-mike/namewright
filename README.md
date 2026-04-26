@@ -1,8 +1,8 @@
 # Namewright
 
-A $19 brand-naming tool for solo founders pre-incorporation. Submit a brief, get 8–12 ranked name candidates with preliminary trademark screening (Signa + optional EUIPO) and domain availability (DNS + RDAP + WhoisJSON) across three TLDs. Cross-checked across selected sources, structured report in under 90 seconds.
+A $19 brand-naming tool for solo founders pre-incorporation. Submit a brief, get 8–12 ranked name candidates with **strategic 6-dimension scores**, **decision triad analysis** (Safe vs. Bold), and **linguistic mechanism notes**. Cross-checked across preliminary trademark screening (Signa + optional EUIPO) and **granular domain confidence matrix** (DNS + RDAP + Registrar) in under 90 seconds.
 
-**What it is:** structured naming + preliminary trademark/domain screening.
+**What it is:** high-fidelity naming + rigorous due-diligence screening + proof of work (filtered candidates).
 **What it isn't:** a brand strategy consultant, and not legal clearance. Positioning, messaging, visual identity, and competitive differentiation are out of scope. Trademark clearance requires a qualified attorney — we surface signals to inform that conversation, not replace it.
 
 Landing copy: _"Name your brand. Before you commit."_

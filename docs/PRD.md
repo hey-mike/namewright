@@ -1,6 +1,6 @@
 # Namewright — Product Requirements Document
 
-**Status:** Pre-launch (Phase 1 shipped, Phase 2a in progress)
+**Status:** Shipped (Phase 1 & 2a)
 **Last updated:** 2026-04-25
 **Owner:** Michael (solo founder)
 **Source of truth for:** product scope, target user, success criteria, what we will and won't build
@@ -74,9 +74,9 @@ Customer-facing surface area, current state:
 
 | Surface             | Behaviour                                                                                                                                                                                                                                                            |
 | ------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Intake form**     | Description (free-text), personality (5 chips), geography (5 chips), constraints (free-text), TLD selection                                                                                                                                                          |
+| **Intake form**     | Description (free-text), personality (5 chips), geography (5 chips), constraints (free-text), TLD selection, context toggle (Company vs Product)                                                                                                                     |
 | **Free preview**    | 3 candidates, no trademark notes, no domain status — designed for trust + FOMO before paywall                                                                                                                                                                        |
-| **Paid report**     | 8–12 candidates with: name, style, rationale, trademark risk + notes (cross-checked across selected sources), per-TLD domain status, alternates. Top 3 picks with reasoning + next steps. Recommendation summary                                                     |
+| **Paid report**     | 8–12 candidates with: name, style, rationale, linguistic mechanism, 6-dimension scoring matrix, trademark risk + notes (cross-checked), granular domain confidence matrix (DNS/RDAP/Registrar). Decision Triad (Safe vs Bold). Filtered candidates (Proof of Work).  |
 | **PDF export**      | Server-side render via `@react-pdf/renderer` `renderToBuffer` inside the Inngest job, stored alongside JSON in R2; auth-gated download at `/api/report/[id]/pdf` with render-on-demand fallback                                                                      |
 | **Email-me-a-copy** | Optional at paywall — full report HTML emailed via Resend, prevents data loss for users who lose the browser link                                                                                                                                                    |
 | **Pricing**         | $19 one-shot. Stripe Checkout, JWT-cookie auth post-payment. Reports stored in R2 (permanent JSON + PDF). KV holds only the SSE status handle for the async pipeline and the auth nonce. Optional magic-link sign-in unlocks `/my-reports` history (Postgres-backed) |
