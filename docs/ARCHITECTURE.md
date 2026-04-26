@@ -24,51 +24,82 @@ Namewright runs an event-driven generation pipeline. `/api/generate` is now a th
 dispatcher that hands off to Inngest; the heavy work runs in a background job and
 the browser polls a Server-Sent Events status stream until the report is ready.
 
-```
-┌────────────────────────────────────────────────────────────────────────────┐
-│                              Browser (client)                               │
-│                                                                             │
-│   IntakeForm ─POST→ /api/generate ──► { jobId, reportId }                   │
-│        ▲                                                                    │
-│        │ SSE  ────────── GET /api/status/[jobId] (every 3s)                 │
-│        │                                                                    │
-│        └─► on 'completed' → /preview?report_id=… ──► Stripe Checkout        │
-│                                                          │                  │
-│                                              success_url │                  │
-│                                                          ▼                  │
-│                              /api/auth ──► JWT cookie ──► /results          │
-│                                                                             │
-│   Magic-link auth (multi-report users):                                     │
-│   LoginModal ─POST→ /api/auth/magic-link ─► email                           │
-│   email link ─GET→ /api/auth/verify?token=… ─► 30d JWT cookie ─► /my-reports│
-└────────────────┬─────────────────────────────────────────────┬──────────────┘
-                 │                                             │
-                 ▼                                             ▼
-┌──────────────────────────────────────────┐  ┌─────────────────────────────┐
-│           Vercel (Fluid Compute)         │  │      External services      │
-│                                          │  │                             │
-│   POST /api/generate  ──► inngest.send() │  │  Anthropic (Claude)         │
-│   GET  /api/status/[jobId] (SSE / 3s)    │  │  Signa (USPTO+EUIPO+WIPO)   │
-│   POST /api/auth/magic-link              │  │  EUIPO direct (LD-flagged)  │
-│   GET  /api/auth/verify                  │  │  DNS / RDAP / WhoisJSON     │
-│   GET  /api/auth         (Stripe → JWT)  │  │  LaunchDarkly (1 flag)      │
-│   POST /api/auth/logout                  │  │                             │
-│   GET  /api/preview                      │  │  Stripe (Checkout + WH)     │
-│   POST /api/webhook  ◄─ Stripe           │  │  Resend (transactional mail)│
-│   GET  /api/report/[id]/pdf  (gated)     │  │  Inngest (broker)           │
-│   POST/GET/PUT /api/inngest (handler)    │  │  Sentry / Slack (optional)  │
-│   GET  /api/health, /api/cron/...        │  │                             │
-│                                          │  │  Storage layers:            │
-│   proxy.ts (rate limit on /generate)     │  │   • Cloudflare R2 (S3)      │
-│                                          │  │   • Postgres (Prisma)       │
-│   Inngest function `generateReportJob`:  │  │   • Vercel KV (Upstash)     │
-│     ├─ set-initial-status   (KV)         │  │                             │
-│     ├─ generate-report      (LLM/APIs)   │  │                             │
-│     ├─ save-report          (R2 JSON)    │  │                             │
-│     ├─ save-report-pdf      (R2 PDF) [*] │  │                             │
-│     └─ set-completed-status (KV)         │  │                             │
-│         [*] non-fatal; on-demand fallback│  │                             │
-└──────────────────────────────────────────┘  └─────────────────────────────┘
+```mermaid
+flowchart TB
+  subgraph Client["Browser"]
+    direction TB
+    Form["IntakeForm"]
+    Preview["/preview"]
+    Results["/results"]
+    MyReports["/my-reports"]
+    Login["LoginModal"]
+  end
+
+  subgraph App["Vercel — Next.js App Router (Fluid Compute)"]
+    direction TB
+    Generate["POST /api/generate<br/><i>dispatcher</i>"]
+    Status["GET /api/status/[jobId]<br/><i>SSE 3s loop</i>"]
+    Auth["GET /api/auth<br/><i>Stripe → JWT</i>"]
+    MagicLink["POST /api/auth/magic-link"]
+    Verify["GET /api/auth/verify"]
+    Webhook["POST /api/webhook"]
+    Pdf["GET /api/report/[id]/pdf<br/><i>auth-gated</i>"]
+    Job["generateReportJob<br/><b>5-step pipeline</b>"]
+  end
+
+  subgraph Storage["Storage layers"]
+    direction LR
+    R2[("R2<br/>JSON + PDF<br/><i>permanent</i>")]
+    PG[("Postgres<br/>User + ReportRecord<br/><i>permanent</i>")]
+    KV[("KV<br/>nonces / tokens / job status<br/><i>15m–24h</i>")]
+  end
+
+  subgraph Ext["External services"]
+    direction TB
+    Inngest["Inngest broker"]
+    Anthropic["Anthropic Claude"]
+    TM["Signa + EUIPO direct"]
+    DNS["DNS / RDAP / WhoisJSON"]
+    Stripe["Stripe Checkout + WH"]
+    Resend["Resend"]
+  end
+
+  Form -->|"POST"| Generate
+  Generate -->|"setJobStatus pending"| KV
+  Generate -->|"inngest.send()"| Inngest
+  Inngest -->|"trigger"| Job
+  Job <--> Anthropic
+  Job <--> TM
+  Job <--> DNS
+  Job -->|"saveReport / saveReportPdf"| R2
+  Job -->|"setJobStatus"| KV
+
+  Form -. "EventSource" .-> Status
+  Status -.->|"getJobStatus"| KV
+
+  Preview -->|"checkout"| Stripe
+  Stripe -. "webhook" .-> Webhook
+  Webhook -->|"upsert"| PG
+  Webhook -->|"email-me-a-copy"| Resend
+
+  Stripe -. "success_url" .-> Auth
+  Auth -->|"consume nonce"| KV
+  Auth -->|"getReport"| R2
+  Auth -->|"verify ownership"| PG
+  Auth --> Results
+
+  Login --> MagicLink
+  MagicLink -->|"setMagicLink 15m"| KV
+  MagicLink -->|"send link"| Resend
+  Resend -. "email link" .-> Verify
+  Verify -->|"consumeMagicLink"| KV
+  Verify -->|"User lookup"| PG
+  Verify --> MyReports
+
+  MyReports -->|"list"| PG
+  Results --> Pdf
+  Pdf -->|"getReportPdf or render"| R2
+  Pdf -->|"verify ownership"| PG
 ```
 
 The Inngest broker is hosted by Inngest in production (signed via
@@ -167,35 +198,38 @@ with `retries: 0`.
 - `client.ts` — `new Inngest({ id: 'namewright' })` singleton.
 - `functions.tsx` — `generateReportJob` registered with `retries: 0`.
 
-```
-event 'report.generate' (data: { body, jobId, reportId, requestId, mockPipeline })
-  │
-  ▼
-┌──────────────────────────┐
-│ generateReportJob        │   each step.run() is durable + individually observable
-│ retries: 0               │   in the Inngest dev UI; outputs are persisted so
-└──────────────────────────┘   crash-recovery fast-forwards through completed steps
-  │
-  ▼
-[1] set-initial-status ─► KV `pending`                                      (idempotent)
-  │
-  ▼
-[2] generate-report ─► Anthropic + Signa + EUIPO + DNS/RDAP/WhoisJSON
-  │                    + validators (auto-fix + grounded marks)
-  │                    on RateLimit/CreditExhausted/5xx → KV `failed` ─► throw
-  ▼
-[3] save-report ─► R2 reports/{id}.json
-  │               on failure → Slack critical + KV `failed` ─► throw
-  ▼
-[4] save-report-pdf ─► renderToBuffer(<ReportPdfDocument/>) ─► R2 reports/{id}.pdf
-  │                    NON-FATAL ─► on failure, Slack warning + continue
-  │                    (downstream /api/report/[id]/pdf renders on demand + caches)
-  ▼
-[5] set-completed-status ─► KV `completed` { reportId, preview, summary, totalCount }
-  │
-  ▼
-SSE stream at /api/status/[jobId] picks up the change and closes the connection;
-the browser redirects to /preview?report_id=…
+```mermaid
+flowchart TB
+  Event(["event <code>report.generate</code><br/><i>data: body, jobId, reportId, requestId</i>"])
+  S1["<b>1. set-initial-status</b><br/>KV: pending<br/><i>idempotent</i>"]
+  S2["<b>2. generate-report</b><br/>Anthropic + Signa + EUIPO + DNS/RDAP/WhoisJSON<br/>+ validators (auto-fix, grounded marks)"]
+  S3["<b>3. save-report</b><br/>R2: reports/{id}.json"]
+  S4["<b>4. save-report-pdf</b><br/>renderToBuffer → R2: reports/{id}.pdf<br/><b>non-fatal</b>"]
+  S5["<b>5. set-completed-status</b><br/>KV: completed<br/>{ reportId, preview, summary, totalCount }"]
+  Done(["SSE → /preview?report_id=…"])
+
+  F2["KV: failed<br/>+ Slack <b>critical</b><br/><i>rethrow</i>"]
+  F3["KV: failed<br/>+ Slack <b>critical</b><br/><i>rethrow</i>"]
+  F4["log warn<br/>+ Slack <b>warning</b><br/><i>continue to step 5</i>"]
+  Fallback["/api/report/[id]/pdf<br/>renders + caches on demand"]
+
+  Event --> S1 --> S2 --> S3 --> S4 --> S5 --> Done
+
+  S2 -.->|"RateLimit / Credit / 5xx"| F2
+  S3 -.->|"R2 write failure"| F3
+  S4 -.->|"render or write failure"| F4
+  F4 -.-> S5
+  F4 -. "missing PDF" .-> Fallback
+
+  classDef fatal fill:#fee2e2,stroke:#b91c1c,color:#7f1d1d
+  classDef warn fill:#fef3c7,stroke:#b45309,color:#78350f
+  classDef step fill:#e0f2fe,stroke:#075985,color:#0c4a6e
+  classDef terminal fill:#dcfce7,stroke:#15803d,color:#14532d
+
+  class F2,F3 fatal
+  class F4,Fallback warn
+  class S1,S2,S3,S4,S5 step
+  class Event,Done terminal
 ```
 
 **Step boundaries are load-bearing.** Each `step.run` is the unit of:
