@@ -1,8 +1,10 @@
 import { type NextRequest, NextResponse } from 'next/server'
+import { cookies } from 'next/headers'
 import stripe from '@/lib/stripe'
-import { signSession } from '@/lib/session'
+import { signSession, verifySession } from '@/lib/session'
 import { validateEnv } from '@/lib/env'
-import { consumeAuthNonce, getReport } from '@/lib/kv'
+import { consumeAuthNonce } from '@/lib/kv'
+import { getReport } from '@/lib/r2'
 import logger from '@/lib/logger'
 
 export async function GET(request: NextRequest) {
@@ -48,7 +50,11 @@ export async function GET(request: NextRequest) {
     return NextResponse.redirect(new URL('/', request.url))
   }
 
-  const token = await signSession(reportId, true)
+  const cookieStore = await cookies()
+  const existingToken = cookieStore.get('session')?.value ?? ''
+  const existingSession = await verifySession(existingToken)
+
+  const token = await signSession(reportId, true, existingSession?.userId)
   const response = NextResponse.redirect(new URL(`/results?report_id=${reportId}`, request.url))
 
   response.cookies.set({
