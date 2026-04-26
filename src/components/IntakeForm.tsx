@@ -270,8 +270,10 @@ export function IntakeForm() {
             <span className="italic text-[#787774]">Before you commit.</span>
           </h1>
           <p className="text-lg text-[#787774] leading-relaxed max-w-md">
-            Submit a brief, get 8–12 ranked name candidates with preliminary trademark screening and
-            domain availability.
+            Get a high-fidelity naming report including our{' '}
+            <strong>Strategic Decision Triad</strong> (Safe vs. Bold),{' '}
+            <strong>6-dimension candidate scores</strong>, and full transparency into trademark and
+            domain signals.
           </p>
         </div>
 
