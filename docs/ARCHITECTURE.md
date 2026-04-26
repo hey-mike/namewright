@@ -24,83 +24,64 @@ Namewright runs an event-driven generation pipeline. `/api/generate` is now a th
 dispatcher that hands off to Inngest; the heavy work runs in a background job and
 the browser polls a Server-Sent Events status stream until the report is ready.
 
+**Context — what talks to what.** The 30-second model.
+
 ```mermaid
-flowchart TB
-  subgraph Client["Browser"]
-    direction TB
-    Form["IntakeForm"]
-    Preview["/preview"]
-    Results["/results"]
-    MyReports["/my-reports"]
-    Login["LoginModal"]
-  end
+flowchart LR
+  Client["Browser"]
+  App["Vercel app<br/><i>Next.js + Inngest function</i>"]
+  Storage["Storage<br/><i>R2 · Postgres · KV</i>"]
+  Ext["External services<br/><i>Stripe · Anthropic · Inngest broker</i><br/><i>Signa · EUIPO · DNS · Resend</i>"]
 
-  subgraph App["Vercel — Next.js App Router (Fluid Compute)"]
-    direction TB
-    Generate["POST /api/generate<br/><i>dispatcher</i>"]
-    Status["GET /api/status/[jobId]<br/><i>SSE 3s loop</i>"]
-    Auth["GET /api/auth<br/><i>Stripe → JWT</i>"]
-    MagicLink["POST /api/auth/magic-link"]
-    Verify["GET /api/auth/verify"]
-    Webhook["POST /api/webhook"]
-    Pdf["GET /api/report/[id]/pdf<br/><i>auth-gated</i>"]
-    Job["generateReportJob<br/><b>5-step pipeline</b>"]
-  end
+  Client <-->|"HTTPS + SSE"| App
+  App <-->|"S3 · SQL · Redis"| Storage
+  App <-->|"API + webhooks"| Ext
 
-  subgraph Storage["Storage layers"]
-    direction LR
-    R2[("R2<br/>JSON + PDF<br/><i>permanent</i>")]
-    PG[("Postgres<br/>User + ReportRecord<br/><i>permanent</i>")]
-    KV[("KV<br/>nonces / tokens / job status<br/><i>15m–24h</i>")]
-  end
-
-  subgraph Ext["External services"]
-    direction TB
-    Inngest["Inngest broker"]
-    Anthropic["Anthropic Claude"]
-    TM["Signa + EUIPO direct"]
-    DNS["DNS / RDAP / WhoisJSON"]
-    Stripe["Stripe Checkout + WH"]
-    Resend["Resend"]
-  end
-
-  Form -->|"POST"| Generate
-  Generate -->|"setJobStatus pending"| KV
-  Generate -->|"inngest.send()"| Inngest
-  Inngest -->|"trigger"| Job
-  Job <--> Anthropic
-  Job <--> TM
-  Job <--> DNS
-  Job -->|"saveReport / saveReportPdf"| R2
-  Job -->|"setJobStatus"| KV
-
-  Form -. "EventSource" .-> Status
-  Status -.->|"getJobStatus"| KV
-
-  Preview -->|"checkout"| Stripe
-  Stripe -. "webhook" .-> Webhook
-  Webhook -->|"upsert"| PG
-  Webhook -->|"email-me-a-copy"| Resend
-
-  Stripe -. "success_url" .-> Auth
-  Auth -->|"consume nonce"| KV
-  Auth -->|"getReport"| R2
-  Auth -->|"verify ownership"| PG
-  Auth --> Results
-
-  Login --> MagicLink
-  MagicLink -->|"setMagicLink 15m"| KV
-  MagicLink -->|"send link"| Resend
-  Resend -. "email link" .-> Verify
-  Verify -->|"consumeMagicLink"| KV
-  Verify -->|"User lookup"| PG
-  Verify --> MyReports
-
-  MyReports -->|"list"| PG
-  Results --> Pdf
-  Pdf -->|"getReportPdf or render"| R2
-  Pdf -->|"verify ownership"| PG
+  classDef box fill:#f8fafc,stroke:#475569,color:#0f172a
+  class Client,App,Storage,Ext box
 ```
+
+**Generate flow — what happens after the user clicks "Generate".** Time runs top-to-bottom.
+
+```mermaid
+sequenceDiagram
+  autonumber
+  actor User
+  participant Browser
+  participant Generate as /api/generate
+  participant KV
+  participant Broker as Inngest broker
+  participant Job as generateReportJob
+  participant R2
+  participant SSE as /api/status/[jobId]
+
+  User->>Browser: submit IntakeForm
+  Browser->>Generate: POST { description, ... }
+  Generate->>KV: setJobStatus(jobId, pending)
+  Generate->>Broker: inngest.send('report.generate')
+  Generate-->>Browser: 200 { jobId, reportId }
+
+  Browser->>SSE: open EventSource
+
+  par Pipeline runs in background
+    Broker->>Job: invoke
+    Job->>KV: pending (idempotent)
+    Job->>Job: Anthropic + Signa + EUIPO + DNS<br/>+ validators
+    Job->>R2: saveReport (JSON)
+    Job->>R2: saveReportPdf (PDF, non-fatal)
+    Job->>KV: completed { reportId, preview, ... }
+  and SSE polls every 3s
+    loop until completed or failed
+      SSE->>KV: getJobStatus(jobId)
+      SSE-->>Browser: data: { status: pending }
+    end
+  end
+
+  SSE-->>Browser: data: { status: completed }
+  Browser->>User: redirect → /preview?report_id=…
+```
+
+**After preview**, the user goes through Stripe Checkout. The post-checkout `success_url` lands at `/api/auth`, which verifies the paid session, consumes a single-use KV nonce, sets the JWT cookie, and redirects to `/results`. A parallel `/api/webhook` receives the Stripe event server-side and upserts `User` + `ReportRecord` rows in Postgres for the multi-report identity layer (signed-in users use the magic-link flow at `/api/auth/magic-link` → `/api/auth/verify` to view their full report history at `/my-reports`). PDF download goes through `/api/report/[id]/pdf` with the same ownership gate.
 
 The Inngest broker is hosted by Inngest in production (signed via
 `INNGEST_SIGNING_KEY`) and runs locally in dev mode (`INNGEST_DEV=1`,
