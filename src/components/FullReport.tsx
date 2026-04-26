@@ -3,6 +3,7 @@ import type { ReportData } from '@/lib/types'
 import { CandidateRow } from './CandidateRow'
 import { PdfExportButton } from './PdfExportButton'
 import { AffiliateLinks } from './AffiliateLinks'
+import { RejectedNames } from './RejectedNames'
 
 const VERIFY_LINKS = [
   {
@@ -50,44 +51,69 @@ export function FullReport({ report, reportId }: { report: ReportData; reportId?
             Top picks
           </p>
           <div className="stagger">
-            {report.topPicks.map((pick, i) => (
-              <div
-                key={pick.name}
-                className="py-5 flex gap-6"
-                style={{ borderBottom: '1px solid var(--color-border)' }}
-              >
-                <span
-                  className="mono text-xs font-bold shrink-0 w-6 pt-0.5"
-                  style={{ color: 'var(--color-accent)' }}
+            {report.topPicks.map((pick, i) => {
+              const candidate = report.candidates.find((c) => c.name === pick.name)
+              const triadLabel = candidate?.triadLabel
+
+              return (
+                <div
+                  key={pick.name}
+                  className="py-5 flex gap-6"
+                  style={{ borderBottom: '1px solid var(--color-border)' }}
                 >
-                  {String(i + 1).padStart(2, '0')}
-                </span>
-                <div className="flex-1 min-w-0">
-                  <h3
-                    className="display text-2xl mb-2"
-                    style={{
-                      letterSpacing: '-0.025em',
-                      color: 'var(--color-text-1)',
-                      fontWeight: 700,
-                    }}
+                  <span
+                    className="mono text-xs font-bold shrink-0 w-6 pt-0.5"
+                    style={{ color: 'var(--color-accent)' }}
                   >
-                    {pick.name}
-                  </h3>
-                  <p
-                    className="ink-soft leading-relaxed mb-3"
-                    style={{ fontSize: 14, fontWeight: 300 }}
-                  >
-                    {pick.reasoning}
-                  </p>
-                  <p className="mono text-[10px] tracking-widest uppercase mb-1 ink-softer">
-                    Next steps
-                  </p>
-                  <p className="ink-soft leading-relaxed" style={{ fontSize: 14, fontWeight: 300 }}>
-                    {pick.nextSteps}
-                  </p>
+                    {String(i + 1).padStart(2, '0')}
+                  </span>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-3 mb-2">
+                      <h3
+                        className="display text-2xl"
+                        style={{
+                          letterSpacing: '-0.025em',
+                          color: 'var(--color-text-1)',
+                          fontWeight: 700,
+                        }}
+                      >
+                        {pick.name}
+                      </h3>
+                      {triadLabel === 'safe' && (
+                        <span className="bg-[#EAEAEA] text-[#111111] px-2 py-0.5 text-[9px] mono font-bold uppercase tracking-tighter">
+                          The Safe Bet
+                        </span>
+                      )}
+                      {triadLabel === 'bold' && (
+                        <span className="bg-[#FF4F00] text-white px-2 py-0.5 text-[9px] mono font-bold uppercase tracking-tighter">
+                          The Bold Move
+                        </span>
+                      )}
+                      {triadLabel === 'best' && (
+                        <span className="bg-[#111111] text-white px-2 py-0.5 text-[9px] mono font-bold uppercase tracking-tighter">
+                          Best All-Rounder
+                        </span>
+                      )}
+                    </div>
+                    <p
+                      className="ink-soft leading-relaxed mb-3"
+                      style={{ fontSize: 14, fontWeight: 300 }}
+                    >
+                      {pick.reasoning}
+                    </p>
+                    <p className="mono text-[10px] tracking-widest uppercase mb-1 ink-softer">
+                      Next steps
+                    </p>
+                    <p
+                      className="ink-soft leading-relaxed"
+                      style={{ fontSize: 14, fontWeight: 300 }}
+                    >
+                      {pick.nextSteps}
+                    </p>
+                  </div>
                 </div>
-              </div>
-            ))}
+              )
+            })}
           </div>
         </section>
       )}
@@ -132,6 +158,10 @@ export function FullReport({ report, reportId }: { report: ReportData; reportId?
             {report.recommendation}
           </p>
         </section>
+      )}
+
+      {report.rejectedCandidates && report.rejectedCandidates.length > 0 && (
+        <RejectedNames candidates={report.rejectedCandidates} />
       )}
 
       <section className="mb-14">
