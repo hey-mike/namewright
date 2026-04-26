@@ -1,5 +1,5 @@
 import { type NextRequest, NextResponse } from 'next/server'
-import { getReport } from '@/lib/kv'
+import { getReport } from '@/lib/r2'
 
 export async function GET(request: NextRequest) {
   const reportId = request.nextUrl.searchParams.get('report_id')

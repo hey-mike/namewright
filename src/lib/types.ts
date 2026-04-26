@@ -64,7 +64,8 @@ export interface GenerateResponse {
 }
 
 export interface SessionPayload {
-  reportId: string
+  reportId?: string
+  userId?: string
   paid: boolean
   iat: number
   exp: number

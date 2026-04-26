@@ -208,25 +208,6 @@ function extractText(content: Anthropic.Messages.ContentBlock[]): string {
     .trim()
 }
 
-// Finds the first valid JSON object/array in text by scanning from each candidate bracket,
-// using lastIndexOf for the closing bracket. Handles model preamble with stray braces.
-function extractJson(text: string, open: '{' | '['): unknown {
-  const close = open === '{' ? '}' : ']'
-  const end = text.lastIndexOf(close)
-  if (end === -1) throw new Error(`No closing '${close}' found in response`)
-  let idx = 0
-  while (true) {
-    const start = text.indexOf(open, idx)
-    if (start === -1 || start > end)
-      throw new Error(`No JSON ${open === '{' ? 'object' : 'array'} found in response`)
-    try {
-      return JSON.parse(text.slice(start, end + 1))
-    } catch {
-      idx = start + 1
-    }
-  }
-}
-
 function rethrowAnthropicError(err: unknown): never {
   throw err
 }
@@ -682,21 +663,11 @@ export function validateReportData(data: unknown): ReportData {
   return d as unknown as ReportData
 }
 
-function stripFences(text: string): string {
-  return text
-    .replace(/^```json\s*/i, '')
-    .replace(/^```\s*/i, '')
-    .replace(/\s*```$/i, '')
-    .trim()
-}
-
-export function parseReport(text: string): ReportData {
-  const parsed = extractJson(stripFences(text), '{')
+export function parseReport(parsed: unknown): ReportData {
   return validateReportData(parsed)
 }
 
-export function parseProposals(text: string): CandidateProposal[] {
-  const parsed = extractJson(stripFences(text), '[')
+export function parseProposals(parsed: unknown): CandidateProposal[] {
   if (!Array.isArray(parsed)) throw new Error('Response is not an array')
   if (parsed.length < 5) throw new Error(`Too few candidates: ${parsed.length}`)
 
@@ -795,16 +766,8 @@ const GENERATE_CANDIDATES_PROMPT = `You are a brand naming specialist. Generate 
 - For each candidate write 2-3 sentences of strategic rationale explaining why it fits.
 
 # Output
-Respond with ONLY a valid JSON array. No markdown, no preamble.
+Call the record_candidates tool to output your answer.
 Valid values for "style": "descriptive", "invented", "metaphorical", "acronym", "compound".
-
-[
-  {
-    "name": "string — single word preferred",
-    "style": "one of the five values listed above",
-    "rationale": "2-3 sentences"
-  }
-]
 
 Return 8-12 items. No trademark or domain data — that is handled separately.`
 
@@ -838,12 +801,46 @@ Generate brand name candidates as a JSON array.`
         max_tokens: 3000,
         system: GENERATE_CANDIDATES_PROMPT,
         messages: [{ role: 'user', content: userMessage }],
+        tools: [
+          {
+            name: 'record_candidates',
+            description: 'Record the generated brand name candidates.',
+            input_schema: {
+              type: 'object',
+              properties: {
+                candidates: {
+                  type: 'array',
+                  items: {
+                    type: 'object',
+                    properties: {
+                      name: { type: 'string', description: 'Single word preferred' },
+                      style: {
+                        type: 'string',
+                        enum: ['descriptive', 'invented', 'metaphorical', 'acronym', 'compound'],
+                      },
+                      rationale: {
+                        type: 'string',
+                        description: '2-3 sentences explaining why it fits',
+                      },
+                    },
+                    required: ['name', 'style', 'rationale'],
+                  },
+                  minItems: 8,
+                  maxItems: 12,
+                },
+              },
+              required: ['candidates'],
+            },
+          },
+        ],
+        tool_choice: { type: 'tool', name: 'record_candidates' },
       }),
     { requestId: opts.requestId, step: 'generate-candidates' }
   )
 
-  const text = extractText(response.content)
-  if (!text) throw new Error('Model returned no text block — likely ended on a tool call')
+  const toolCall = response.content.find((b) => b.type === 'tool_use')
+  if (!toolCall || toolCall.type !== 'tool_use')
+    throw new Error('Model did not call the record_candidates tool')
 
   logAnthropicUsage({
     requestId: opts.requestId,
@@ -851,7 +848,7 @@ Generate brand name candidates as a JSON array.`
     model: SONNET_MODEL,
     usage: response.usage,
   })
-  return parseProposals(text)
+  return parseProposals((toolCall.input as { candidates: unknown[] }).candidates)
 }
 
 export async function generateCandidates(
@@ -922,33 +919,10 @@ const SYNTHESISE_REPORT_PROMPT = `You are a brand strategy expert. You have been
 - Write actionable nextSteps for each topPick. Scope is limited to trademark and domain actions only — e.g. "File USPTO application in Nice Class 42", "Register acmely.io immediately", "Commission a clearance search before filing". Do not include marketing, product, or business advice.
 
 # Output
-Respond with ONLY a valid JSON object. No markdown, no preamble.
+Call the record_report tool to output your answer.
 Valid values for "style": "descriptive", "invented", "metaphorical", "acronym", "compound".
 Valid values for "trademarkRisk": "low", "moderate", "high", "uncertain".
-Valid values for domain TLDs: "available", "taken", "likely taken", "uncertain".
-
-{
-  "summary": "1-2 sentence recap of what the user is building",
-  "candidates": [
-    {
-      "name": "must match a provided candidate name exactly",
-      "style": "one of the five style values listed above",
-      "rationale": "2-3 sentences",
-      "trademarkRisk": "one of the four risk values listed above",
-      "trademarkNotes": "1-2 sentences on conflicts found or why risk is low",
-      "domains": {
-        "tlds": {
-          "<each TLD exactly as provided in the candidate data>": "one of the four domain status values"
-        },
-        "alternates": ["string — only for TLDs that are taken or likely taken"]
-      }
-    }
-  ],
-  "topPicks": [
-    { "name": "must match a candidate name", "reasoning": "why this is safest", "nextSteps": "specific actions" }
-  ],
-  "recommendation": "1-2 sentences on the top 1-2 to pursue first"
-}`
+Valid values for domain TLDs: "available", "taken", "likely taken", "uncertain".`
 
 export async function synthesiseReport(
   req: GenerateRequest,
@@ -1014,12 +988,99 @@ Produce the final brand name report as JSON.`
           max_tokens: 6000,
           system: SYNTHESISE_REPORT_PROMPT,
           messages: [{ role: 'user', content: userMessage }],
+          tools: [
+            {
+              name: 'record_report',
+              description: 'Record the final brand name report.',
+              input_schema: {
+                type: 'object',
+                properties: {
+                  summary: {
+                    type: 'string',
+                    description: '1-2 sentence recap of what the user is building',
+                  },
+                  candidates: {
+                    type: 'array',
+                    items: {
+                      type: 'object',
+                      properties: {
+                        name: {
+                          type: 'string',
+                          description: 'Must match a provided candidate name exactly',
+                        },
+                        style: {
+                          type: 'string',
+                          enum: ['descriptive', 'invented', 'metaphorical', 'acronym', 'compound'],
+                        },
+                        rationale: { type: 'string', description: '2-3 sentences' },
+                        trademarkRisk: {
+                          type: 'string',
+                          enum: ['low', 'moderate', 'high', 'uncertain'],
+                        },
+                        trademarkNotes: {
+                          type: 'string',
+                          description: '1-2 sentences on conflicts found or why risk is low',
+                        },
+                        domains: {
+                          type: 'object',
+                          properties: {
+                            tlds: {
+                              type: 'object',
+                              additionalProperties: {
+                                type: 'string',
+                                enum: ['available', 'taken', 'likely taken', 'uncertain'],
+                              },
+                              description:
+                                'Each TLD exactly as provided in the candidate data mapped to its status',
+                            },
+                            alternates: {
+                              type: 'array',
+                              items: { type: 'string' },
+                              description: 'Only for TLDs that are taken or likely taken',
+                            },
+                          },
+                          required: ['tlds', 'alternates'],
+                        },
+                      },
+                      required: [
+                        'name',
+                        'style',
+                        'rationale',
+                        'trademarkRisk',
+                        'trademarkNotes',
+                        'domains',
+                      ],
+                    },
+                  },
+                  topPicks: {
+                    type: 'array',
+                    items: {
+                      type: 'object',
+                      properties: {
+                        name: { type: 'string', description: 'Must match a candidate name' },
+                        reasoning: { type: 'string', description: 'Why this is safest' },
+                        nextSteps: { type: 'string', description: 'Specific actions' },
+                      },
+                      required: ['name', 'reasoning', 'nextSteps'],
+                    },
+                  },
+                  recommendation: {
+                    type: 'string',
+                    description: '1-2 sentences on the top 1-2 to pursue first',
+                  },
+                },
+                required: ['summary', 'candidates', 'topPicks', 'recommendation'],
+              },
+            },
+          ],
+          tool_choice: { type: 'tool', name: 'record_report' },
         }),
       { requestId: opts.requestId, step: 'synthesise-report' }
     )
 
-    const text = extractText(response.content)
-    if (!text) throw new Error('Model returned no text block — likely ended on a tool call')
+    const toolCall = response.content.find((b) => b.type === 'tool_use')
+    if (!toolCall || toolCall.type !== 'tool_use')
+      throw new Error('Model did not call the record_report tool')
 
     logAnthropicUsage({
       requestId: opts.requestId,
@@ -1027,7 +1088,7 @@ Produce the final brand name report as JSON.`
       model: SONNET_MODEL,
       usage: response.usage,
     })
-    const report = parseReport(text)
+    const report = parseReport(toolCall.input)
     // Merge server-side per-source domain signals into the LLM-produced
     // candidates. The synthesise prompt deliberately doesn't surface
     // signals to the LLM (that would invite hallucinated RDAP/DNS values);

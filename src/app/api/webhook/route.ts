@@ -4,9 +4,10 @@ import type Stripe from 'stripe'
 import stripe from '@/lib/stripe'
 import { validateEnv } from '@/lib/env'
 import { notifySlack } from '@/lib/alerts'
-import { getReport } from '@/lib/kv'
+import { getReport } from '@/lib/r2'
 import { sendReportEmail } from '@/lib/email'
 import logger from '@/lib/logger'
+import { prisma } from '@/lib/db'
 
 export async function POST(req: Request) {
   validateEnv()
@@ -109,6 +110,30 @@ export async function POST(req: Request) {
           })
           emailReason = result.reason
         }
+      }
+
+      // Upsert User and map the ReportRecord in the database
+      try {
+        await prisma.user.upsert({
+          where: { email: reportEmail.toLowerCase() },
+          update: {
+            reports: {
+              create: { id: reportId },
+            },
+          },
+          create: {
+            email: reportEmail.toLowerCase(),
+            reports: {
+              create: { id: reportId },
+            },
+          },
+        })
+        log.info({ reportEmail, reportId }, 'Successfully mapped report to user in DB')
+      } catch (dbErr) {
+        log.error(
+          { err: dbErr instanceof Error ? dbErr.message : String(dbErr), reportId, reportEmail },
+          'Failed to map report to user in DB'
+        )
       }
     }
 

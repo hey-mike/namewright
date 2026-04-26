@@ -71,7 +71,7 @@ export function FreePreview({
           Top 3 candidates
         </p>
         {candidates.map((c, i) => (
-          <CandidateRow key={c.name} c={c} index={i} defaultOpen={i === 0} previewLocked={i > 0} />
+          <CandidateRow key={c.name} c={c} index={i} previewLocked={i > 0} />
         ))}
       </section>
 

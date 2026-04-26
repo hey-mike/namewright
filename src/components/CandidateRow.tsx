@@ -4,12 +4,10 @@ import type { Candidate } from '@/lib/types'
 export function CandidateRow({
   c,
   index,
-  defaultOpen = false,
   previewLocked = false,
 }: {
   c: Candidate
   index: number
-  defaultOpen?: boolean
   previewLocked?: boolean
 }) {
   const isTopPick = index === 0

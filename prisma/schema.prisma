@@ -1,0 +1,21 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id        String         @id @default(uuid())
+  email     String         @unique
+  createdAt DateTime       @default(now())
+  reports   ReportRecord[]
+}
+
+model ReportRecord {
+  id        String   @id // matches R2 reportId
+  userId    String
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id])
+}

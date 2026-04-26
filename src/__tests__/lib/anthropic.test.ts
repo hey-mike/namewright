@@ -63,6 +63,13 @@ const VALID_PROPOSALS = Array.from({ length: 8 }, (_, i) => ({
   rationale: 'Strategic rationale here.',
 }))
 
+function makeToolResponse(name: string, input: unknown) {
+  return {
+    content: [{ type: 'tool_use', id: 'call_123', name, input }],
+    usage: { input_tokens: 100, output_tokens: 50 },
+  }
+}
+
 function makeTextResponse(text: string) {
   return {
     content: [{ type: 'text', text }],
@@ -74,21 +81,10 @@ function makeTextResponse(text: string) {
 
 describe('parseReport', () => {
   it('parses clean JSON', () => {
-    const result = parseReport(JSON.stringify(VALID_REPORT))
+    const result = parseReport(VALID_REPORT)
     expect(result.candidates[0].name).toBe('TestBrand')
     expect(result.topPicks).toHaveLength(1)
   })
-
-  it('strips markdown fences', () => {
-    const fenced = `\`\`\`json\n${JSON.stringify(VALID_REPORT)}\n\`\`\``
-    expect(parseReport(fenced).summary).toBe('A test product')
-  })
-
-  it('extracts JSON from surrounding text', () => {
-    const wrapped = `Here is the result: ${JSON.stringify(VALID_REPORT)} done.`
-    expect(parseReport(wrapped).candidates).toHaveLength(1)
-  })
-
   it('throws on unparseable input', () => {
     expect(() => parseReport('not json at all')).toThrow()
   })
@@ -99,7 +95,7 @@ describe('parseReport', () => {
       candidates: [{ ...VALID_REPORT.candidates[0], name: 'TestBrand.' }],
       topPicks: [{ ...VALID_REPORT.topPicks[0], name: 'TestBrand.' }],
     }
-    expect(parseReport(JSON.stringify(dirty)).candidates[0].name).toBe('TestBrand')
+    expect(parseReport(dirty).candidates[0].name).toBe('TestBrand')
   })
 
   it('throws on Cyrillic homoglyphs in candidate names', () => {
@@ -110,7 +106,7 @@ describe('parseReport', () => {
       ...VALID_REPORT,
       candidates: [{ ...VALID_REPORT.candidates[0], name: 'Cadенce' }],
     }
-    expect(() => parseReport(JSON.stringify(dirty))).toThrow(/non-ASCII|homoglyph/)
+    expect(() => parseReport(dirty)).toThrow(/non-ASCII|homoglyph/)
   })
 
   it('throws on emoji in candidate names', () => {
@@ -118,7 +114,7 @@ describe('parseReport', () => {
       ...VALID_REPORT,
       candidates: [{ ...VALID_REPORT.candidates[0], name: 'Rocket🚀' }],
     }
-    expect(() => parseReport(JSON.stringify(dirty))).toThrow(/non-ASCII|homoglyph/)
+    expect(() => parseReport(dirty)).toThrow(/non-ASCII|homoglyph/)
   })
 
   it('throws when a topPick name does not match any candidate (P1 #5)', () => {
@@ -126,7 +122,7 @@ describe('parseReport', () => {
       ...VALID_REPORT,
       topPicks: [{ name: 'NotInCandidates', reasoning: 'r', nextSteps: 's' }],
     }
-    expect(() => parseReport(JSON.stringify(dirty))).toThrow(/does not match any candidate/)
+    expect(() => parseReport(dirty)).toThrow(/does not match any candidate/)
   })
 
   it('auto-prepends "Domain unavailable" prefix when LLM omits it on an unusable candidate (P0 #4)', () => {
@@ -147,7 +143,7 @@ describe('parseReport', () => {
         },
       ],
     }
-    const result = parseReport(JSON.stringify(dirty))
+    const result = parseReport(dirty)
     expect(result.candidates[1].rationale).toMatch(
       /^Domain unavailable — naming inspiration only\./
     )
@@ -172,7 +168,7 @@ describe('parseReport', () => {
       candidates: [unusable, VALID_REPORT.candidates[0]],
       topPicks: [{ name: 'TestBrand', reasoning: 'r', nextSteps: 's' }],
     }
-    const result = parseReport(JSON.stringify(dirty))
+    const result = parseReport(dirty)
     expect(result.candidates.map((c) => c.name)).toEqual(['TestBrand', 'Doomed'])
   })
 
@@ -196,7 +192,7 @@ describe('parseReport', () => {
         { name: 'TestBrand', reasoning: 'r2', nextSteps: 's2' },
       ],
     }
-    const result = parseReport(JSON.stringify(dirty))
+    const result = parseReport(dirty)
     expect(result.topPicks.map((p) => p.name)).toEqual(['TestBrand'])
   })
 
@@ -217,7 +213,7 @@ describe('parseReport', () => {
       candidates: [VALID_REPORT.candidates[0], unusable],
       topPicks: [{ name: 'TestBrand', reasoning: 'r', nextSteps: 's' }],
     }
-    expect(parseReport(JSON.stringify(clean)).candidates).toHaveLength(2)
+    expect(parseReport(clean).candidates).toHaveLength(2)
   })
 
   it('accepts legitimate Latin diacritics (ç, é, ñ, ü, ø)', () => {
@@ -229,7 +225,7 @@ describe('parseReport', () => {
         candidates: [{ ...VALID_REPORT.candidates[0], name }],
         topPicks: [{ ...VALID_REPORT.topPicks[0], name }],
       }
-      expect(parseReport(JSON.stringify(clean)).candidates[0].name).toBe(name)
+      expect(parseReport(clean).candidates[0].name).toBe(name)
     }
   })
 
@@ -239,7 +235,7 @@ describe('parseReport', () => {
       candidates: [{ ...VALID_REPORT.candidates[0], name: 'Cadence' }],
       topPicks: [{ ...VALID_REPORT.topPicks[0], name: 'Cadence' }],
     }
-    expect(parseReport(JSON.stringify(clean)).candidates[0].name).toBe('Cadence')
+    expect(parseReport(clean).candidates[0].name).toBe('Cadence')
   })
 
   it('throws when a topPick is malformed', () => {
@@ -247,7 +243,7 @@ describe('parseReport', () => {
       ...VALID_REPORT,
       topPicks: [{ name: 123, reasoning: 'x', nextSteps: 'y' }],
     }
-    expect(() => parseReport(JSON.stringify(dirty))).toThrow(/topPicks\[0\]\.name/)
+    expect(() => parseReport(dirty)).toThrow(/topPicks\[0\]\.name/)
   })
 
   it('strips leading dots from TLD keys', () => {
@@ -260,36 +256,25 @@ describe('parseReport', () => {
         },
       ],
     }
-    const tlds = parseReport(JSON.stringify(dirty)).candidates[0].domains.tlds
+    const tlds = parseReport(dirty).candidates[0].domains.tlds
     expect(Object.keys(tlds)).toEqual(['com', 'io'])
   })
 })
 
 describe('parseProposals', () => {
   it('parses a valid JSON array', () => {
-    const result = parseProposals(JSON.stringify(VALID_PROPOSALS))
+    const result = parseProposals(VALID_PROPOSALS)
     expect(result).toHaveLength(8)
     expect(result[0].name).toBe('Brand0')
     expect(result[0].style).toBe('invented')
   })
-
-  it('strips markdown fences', () => {
-    const fenced = `\`\`\`json\n${JSON.stringify(VALID_PROPOSALS)}\n\`\`\``
-    expect(parseProposals(fenced)).toHaveLength(8)
-  })
-
-  it('extracts array from surrounding text', () => {
-    const wrapped = `Here are the candidates: ${JSON.stringify(VALID_PROPOSALS)} done.`
-    expect(parseProposals(wrapped)).toHaveLength(8)
-  })
-
   it('throws when fewer than 5 candidates returned', () => {
     const tooFew = VALID_PROPOSALS.slice(0, 3)
-    expect(() => parseProposals(JSON.stringify(tooFew))).toThrow('Too few candidates: 3')
+    expect(() => parseProposals(tooFew)).toThrow('Too few candidates: 3')
   })
 
   it('throws when no array found', () => {
-    expect(() => parseProposals('not an array at all')).toThrow("No closing ']' found in response")
+    expect(() => parseProposals('not an array at all')).toThrow('Response is not an array')
   })
 })
 
@@ -299,7 +284,9 @@ describe('generateCandidates', () => {
   })
 
   it('returns CandidateProposal[] on success', async () => {
-    mockCreate.mockResolvedValue(makeTextResponse(JSON.stringify(MOCK_PROPOSALS)))
+    mockCreate.mockResolvedValue(
+      makeToolResponse('record_candidates', { candidates: MOCK_PROPOSALS })
+    )
 
     const result = await generateCandidates({
       description: 'A SaaS tool',
@@ -316,7 +303,7 @@ describe('generateCandidates', () => {
 
   it('throws when model returns fewer than 5 candidates', async () => {
     const tooFew = MOCK_PROPOSALS.slice(0, 3)
-    mockCreate.mockResolvedValue(makeTextResponse(JSON.stringify(tooFew)))
+    mockCreate.mockResolvedValue(makeToolResponse('record_candidates', { candidates: tooFew }))
 
     await expect(
       generateCandidates({
@@ -329,9 +316,10 @@ describe('generateCandidates', () => {
     ).rejects.toThrow('Too few candidates')
   })
 
-  it('throws when model returns no text block', async () => {
+  it('throws when model does not call the expected tool', async () => {
     mockCreate.mockResolvedValue({
-      content: [{ type: 'tool_use', id: 'x', name: 'web_search', input: {} }],
+      content: [{ type: 'text', text: 'no tools' }],
+      usage: { input_tokens: 100, output_tokens: 50 },
     })
 
     await expect(
@@ -342,7 +330,7 @@ describe('generateCandidates', () => {
         geography: 'z',
         nameType: 'company',
       })
-    ).rejects.toThrow('no text block')
+    ).rejects.toThrow('Model did not call the')
   })
 
   it('retries once on RateLimitError then succeeds', async () => {
@@ -354,7 +342,7 @@ describe('generateCandidates', () => {
 
     mockCreate
       .mockRejectedValueOnce(rateLimit)
-      .mockResolvedValueOnce(makeTextResponse(JSON.stringify(MOCK_PROPOSALS)))
+      .mockResolvedValueOnce(makeToolResponse('record_candidates', { candidates: MOCK_PROPOSALS }))
 
     const result = await generateCandidates({
       description: 'x',
@@ -376,8 +364,10 @@ describe('generateCandidates', () => {
       ...MOCK_PROPOSALS.slice(1),
     ]
     mockCreate
-      .mockResolvedValueOnce(makeTextResponse(JSON.stringify(homoglyphProposals)))
-      .mockResolvedValueOnce(makeTextResponse(JSON.stringify(MOCK_PROPOSALS)))
+      .mockResolvedValueOnce(
+        makeToolResponse('record_candidates', { candidates: homoglyphProposals })
+      )
+      .mockResolvedValueOnce(makeToolResponse('record_candidates', { candidates: MOCK_PROPOSALS }))
 
     const result = await generateCandidates({
       description: 'x',
@@ -398,7 +388,9 @@ describe('generateCandidates', () => {
 
   it('passes the nameType through to the LLM user message', async () => {
     expect.assertions(1)
-    mockCreate.mockResolvedValue(makeTextResponse(JSON.stringify(MOCK_PROPOSALS)))
+    mockCreate.mockResolvedValue(
+      makeToolResponse('record_candidates', { candidates: MOCK_PROPOSALS })
+    )
 
     await generateCandidates({
       description: 'A SaaS tool',
@@ -415,7 +407,9 @@ describe('generateCandidates', () => {
 
   it('renders nameType "company" as company entity in the user message', async () => {
     expect.assertions(1)
-    mockCreate.mockResolvedValue(makeTextResponse(JSON.stringify(MOCK_PROPOSALS)))
+    mockCreate.mockResolvedValue(
+      makeToolResponse('record_candidates', { candidates: MOCK_PROPOSALS })
+    )
 
     await generateCandidates({
       description: 'A SaaS tool',
@@ -437,8 +431,12 @@ describe('generateCandidates', () => {
       ...MOCK_PROPOSALS.slice(1),
     ]
     mockCreate
-      .mockResolvedValueOnce(makeTextResponse(JSON.stringify(homoglyphProposals)))
-      .mockResolvedValueOnce(makeTextResponse(JSON.stringify(homoglyphProposals)))
+      .mockResolvedValueOnce(
+        makeToolResponse('record_candidates', { candidates: homoglyphProposals })
+      )
+      .mockResolvedValueOnce(
+        makeToolResponse('record_candidates', { candidates: homoglyphProposals })
+      )
 
     await expect(
       generateCandidates({
@@ -501,7 +499,7 @@ describe('synthesiseReport', () => {
   })
 
   it('returns validated ReportData on success', async () => {
-    mockCreate.mockResolvedValue(makeTextResponse(JSON.stringify(MOCK_FULL_REPORT)))
+    mockCreate.mockResolvedValue(makeToolResponse('record_report', MOCK_FULL_REPORT))
 
     const result = await synthesiseReport(
       {
@@ -520,7 +518,7 @@ describe('synthesiseReport', () => {
   })
 
   it('passes verified trademark and domain data in the user message', async () => {
-    mockCreate.mockResolvedValue(makeTextResponse(JSON.stringify(MOCK_FULL_REPORT)))
+    mockCreate.mockResolvedValue(makeToolResponse('record_report', MOCK_FULL_REPORT))
 
     await synthesiseReport(
       {
@@ -539,8 +537,8 @@ describe('synthesiseReport', () => {
     expect(callArgs.messages[0].content).toContain('TLD com: available')
   })
 
-  it('throws when model returns no text block', async () => {
-    mockCreate.mockResolvedValue({ content: [] })
+  it('throws when model does not call the expected tool', async () => {
+    mockCreate.mockResolvedValue({ content: [], usage: { input_tokens: 100, output_tokens: 50 } })
 
     await expect(
       synthesiseReport(
@@ -553,7 +551,7 @@ describe('synthesiseReport', () => {
         },
         VERIFIED
       )
-    ).rejects.toThrow('no text block')
+    ).rejects.toThrow('Model did not call the')
   })
 })
 
@@ -595,9 +593,9 @@ const mkTrademark = (
 // generateCandidates + inferNiceClass in parallel, then synthesiseReport,
 // so each full run costs 3 LLM responses.
 function mockGenerateReportResponses(proposals: unknown, niceClass: number, report: unknown) {
-  mockCreate.mockResolvedValueOnce(makeTextResponse(JSON.stringify(proposals)))
+  mockCreate.mockResolvedValueOnce(makeToolResponse('record_candidates', { candidates: proposals }))
   mockCreate.mockResolvedValueOnce(makeTextResponse(String(niceClass)))
-  mockCreate.mockResolvedValueOnce(makeTextResponse(JSON.stringify(report)))
+  mockCreate.mockResolvedValueOnce(makeToolResponse('record_report', report))
 }
 
 describe('generateReport orchestrator', () => {
@@ -642,9 +640,11 @@ describe('generateReport orchestrator', () => {
   })
 
   it('falls back to Nice class 42 when inference returns non-numeric output', async () => {
-    mockCreate.mockResolvedValueOnce(makeTextResponse(JSON.stringify(MOCK_PROPOSALS)))
+    mockCreate.mockResolvedValueOnce(
+      makeToolResponse('record_candidates', { candidates: MOCK_PROPOSALS })
+    )
     mockCreate.mockResolvedValueOnce(makeTextResponse('I am not sure what class this is'))
-    mockCreate.mockResolvedValueOnce(makeTextResponse(JSON.stringify(MOCK_FULL_REPORT)))
+    mockCreate.mockResolvedValueOnce(makeToolResponse('record_report', MOCK_FULL_REPORT))
 
     await generateReport({
       description: 'A SaaS tool',
@@ -661,7 +661,9 @@ describe('generateReport orchestrator', () => {
     ;(checkAllTrademarks as jest.Mock).mockRejectedValue(new Error('Signa down'))
     ;(checkAllDomains as jest.Mock).mockRejectedValue(new Error('DNS down'))
 
-    mockCreate.mockResolvedValueOnce(makeTextResponse(JSON.stringify(MOCK_PROPOSALS)))
+    mockCreate.mockResolvedValueOnce(
+      makeToolResponse('record_candidates', { candidates: MOCK_PROPOSALS })
+    )
     mockCreate.mockResolvedValueOnce(makeTextResponse('42'))
 
     await expect(

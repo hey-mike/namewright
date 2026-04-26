@@ -1,10 +1,8 @@
 import { NextResponse } from 'next/server'
 import { randomUUID } from 'crypto'
-import Anthropic from '@anthropic-ai/sdk'
-import { generateReport, getErrorStage } from '@/lib/anthropic'
-import { saveReport } from '@/lib/kv'
 import { validateEnv } from '@/lib/env'
-import { notifySlack } from '@/lib/alerts'
+import { inngest } from '@/inngest/client'
+import { setJobStatus } from '@/lib/kv'
 import logger from '@/lib/logger'
 import {
   SUPPORTED_TLDS,
@@ -106,80 +104,51 @@ export async function POST(req: Request) {
 
   log.info('report generation started')
 
-  let report
-  try {
-    report = await generateReport(
-      {
-        description: body.description,
-        personality: body.personality as Personality,
-        geography: body.geography as Geography,
-        constraints: body.constraints,
-        tlds,
-        nameType,
-      },
-      { requestId, mockPipeline }
-    )
-  } catch (err) {
-    let userError = 'Report generation failed. Please try again.'
-    const stage = getErrorStage(err)
-    const durationMs = Date.now() - startedAt
-    if (err instanceof Anthropic.RateLimitError) {
-      log.warn({ err: err.message, stage, durationMs }, 'rate limited by Anthropic')
-      userError = 'We are experiencing high demand. Please try again in a moment.'
-    } else if (
-      err instanceof Anthropic.APIError &&
-      err.status === 400 &&
-      err.message.includes('credit balance')
-    ) {
-      log.error({ err: err.message, stage, durationMs }, 'Anthropic credit balance exhausted')
-      await notifySlack({
-        severity: 'critical',
-        title: 'Anthropic credit balance exhausted',
-        details: { error: err.message, stage },
-        requestId,
-      })
-      userError = 'Service temporarily unavailable. Please try again later.'
-    } else {
-      log.error(
-        { err: err instanceof Error ? err.message : String(err), stage, durationMs },
-        'report generation failed'
-      )
-    }
-    return NextResponse.json({ error: userError }, { status: 502 })
-  }
-
+  const jobId = randomUUID()
   const reportId = randomUUID()
 
   try {
-    await saveReport(reportId, report)
+    // Initial status set in Redis so the frontend can immediately start polling
+    await setJobStatus(jobId, { status: 'pending' })
+
+    await inngest.send({
+      name: 'report.generate',
+      data: {
+        body: {
+          description: body.description,
+          personality: body.personality as Personality,
+          geography: body.geography as Geography,
+          constraints: body.constraints,
+          tlds,
+          nameType,
+        },
+        requestId,
+        jobId,
+        reportId,
+        mockPipeline,
+      },
+    })
   } catch (err) {
     const errMsg = err instanceof Error ? err.message : String(err)
-    log.error({ err: errMsg }, 'KV save failed')
-    // KV is the only persistence layer for reports — a save failure means the
-    // user can't be served the report they just paid for (or are about to).
-    await notifySlack({
-      severity: 'critical',
-      title: 'KV save failed for generated report',
-      details: { reportId, error: errMsg },
-      requestId,
-    })
-    return NextResponse.json({ error: 'Failed to save report. Please try again.' }, { status: 503 })
+    log.error({ err: errMsg }, 'Inngest job dispatch failed')
+    return NextResponse.json(
+      { error: 'Failed to start generation. Please try again.' },
+      { status: 503 }
+    )
   }
 
   log.info(
     {
+      jobId,
       reportId,
-      candidateCount: report.candidates.length,
       durationMs: Date.now() - startedAt,
       event: 'request_completed',
     },
-    'report generation completed'
+    'report generation job dispatched'
   )
 
   return NextResponse.json({
+    jobId,
     reportId,
-    preview: report.candidates.slice(0, 3),
-    summary: report.summary,
-    totalCount: report.candidates.length,
   })
 }

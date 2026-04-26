@@ -3,9 +3,10 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "concurrently -n next,stripe -c cyan,magenta --handle-input npm:dev:next npm:dev:stripe",
+    "dev": "concurrently -n next,stripe,inngest -c cyan,magenta,yellow --handle-input npm:dev:next npm:dev:stripe npm:dev:inngest",
     "dev:next": "next dev",
     "dev:stripe": "stripe listen --forward-to http://localhost:3000/api/webhook",
+    "dev:inngest": "npx inngest-cli@latest dev",
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
@@ -14,11 +15,14 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.90.0",
+    "@aws-sdk/client-s3": "^3.1037.0",
     "@launchdarkly/node-server-sdk": "^9.10.11",
+    "@prisma/client": "^7.8.0",
     "@react-pdf/renderer": "^4.5.1",
     "@sentry/nextjs": "^10.49.0",
     "@vercel/analytics": "^2.0.1",
     "@vercel/kv": "^3.0.0",
+    "inngest": "^4.2.4",
     "jose": "^6.2.2",
     "next": "16.2.4",
     "pino": "^10.3.1",
@@ -53,9 +57,13 @@
     "lint-staged": "^16.4.0",
     "playwright": "^1.59.1",
     "prettier": "^3.8.3",
+    "prisma": "^7.8.0",
     "tailwindcss": "^4",
     "ts-jest": "^29.4.9",
     "ts-node": "^10.9.2",
     "typescript": "^5"
+  },
+  "prisma": {
+    "seed": "ts-node prisma/seed.ts"
   }
 }

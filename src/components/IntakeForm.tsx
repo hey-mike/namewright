@@ -94,8 +94,6 @@ export function IntakeForm() {
     setLoading(true)
     setError(null)
     try {
-      // Build headers — attach x-dev-mock-pipeline only in dev builds.
-      // Server hard-refuses this header in production (VERCEL_ENV check).
       const headers: Record<string, string> = { 'Content-Type': 'application/json' }
       if (DEV_MODE) {
         headers['x-dev-mock-pipeline'] = pipelineMode === 'mock' ? '1' : '0'
@@ -107,12 +105,41 @@ export function IntakeForm() {
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error ?? `Server error ${res.status}`)
-      sessionStorage.setItem('report_summary', data.summary)
-      sessionStorage.setItem('report_preview', JSON.stringify(data.preview))
-      sessionStorage.setItem('report_total_count', String(data.totalCount))
-      router.push(`/preview?report_id=${data.reportId}`)
+
+      pollJob(data.jobId, data.reportId)
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Something went wrong')
+      setLoading(false)
+    }
+  }
+
+  function pollJob(jobId: string, reportId: string) {
+    const eventSource = new EventSource(`/api/status/${jobId}`)
+
+    eventSource.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data)
+
+        if (data.status === 'completed') {
+          eventSource.close()
+          sessionStorage.setItem('report_summary', data.summary)
+          sessionStorage.setItem('report_preview', JSON.stringify(data.preview))
+          sessionStorage.setItem('report_total_count', String(data.totalCount))
+          router.push(`/preview?report_id=${reportId}`)
+        } else if (data.status === 'failed') {
+          eventSource.close()
+          throw new Error(data.error ?? 'Report generation failed')
+        }
+      } catch (e) {
+        eventSource.close()
+        setError(e instanceof Error ? e.message : 'Something went wrong')
+        setLoading(false)
+      }
+    }
+
+    eventSource.onerror = () => {
+      eventSource.close()
+      setError('Connection to status server lost.')
       setLoading(false)
     }
   }
