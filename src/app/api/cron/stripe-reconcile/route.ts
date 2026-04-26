@@ -5,6 +5,7 @@ import stripe from '@/lib/stripe'
 import { kv } from '@vercel/kv'
 import { notifySlack } from '@/lib/alerts'
 import logger from '@/lib/logger'
+import { validateEnv } from '@/lib/env'
 
 // Reconciles Stripe paid sessions against KV reports to catch the
 // "webhook never arrived" failure mode (local stripe listen crashed,
@@ -28,6 +29,12 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
+  try {
+    validateEnv()
+  } catch (err) {
+    return NextResponse.json({ error: 'Server misconfigured' }, { status: 500 })
+  }
+
   const requestId = randomUUID()
   const log = logger.child({ requestId, route: 'cron/stripe-reconcile' })
   const startedAt = Date.now()
@@ -43,12 +50,16 @@ export async function GET(req: Request) {
   } catch (err) {
     const errMsg = err instanceof Error ? err.message : String(err)
     log.error({ err: errMsg }, 'Stripe sessions.list failed')
-    await notifySlack({
-      severity: 'warning',
-      title: 'Stripe reconciliation job failed to list sessions',
-      details: { error: errMsg },
-      requestId,
-    })
+    try {
+      await notifySlack({
+        severity: 'warning',
+        title: 'Stripe reconciliation job failed to list sessions',
+        details: { error: errMsg },
+        requestId,
+      })
+    } catch (slackErr) {
+      log.warn({ err: slackErr instanceof Error ? slackErr.message : String(slackErr) }, 'Slack alert failed')
+    }
     return NextResponse.json({ error: 'Stripe list failed' }, { status: 502 })
   }
 
@@ -88,12 +99,16 @@ export async function GET(req: Request) {
     // Sessions may be missing from KV because: (a) TTL expired (>7d since
     // generation), (b) webhook was never delivered, or (c) KV write failed.
     // Either way, support needs to know — page with the list.
-    await notifySlack({
-      severity: 'critical',
-      title: `Stripe reconciliation: ${missing.length} paid session(s) missing from KV`,
-      details: { missing: missing.slice(0, 10), totalMissing: missing.length },
-      requestId,
-    })
+    try {
+      await notifySlack({
+        severity: 'critical',
+        title: `Stripe reconciliation: ${missing.length} paid session(s) missing from KV`,
+        details: { missing: missing.slice(0, 10), totalMissing: missing.length },
+        requestId,
+      })
+    } catch (slackErr) {
+      log.warn({ err: slackErr instanceof Error ? slackErr.message : String(slackErr) }, 'Slack alert failed')
+    }
   }
 
   return NextResponse.json({
