@@ -26,8 +26,11 @@ export function FullReport({ report, reportId }: { report: ReportData; reportId?
   })
 
   return (
-    <main className="max-w-3xl mx-auto px-6 md:px-12 py-10 fade-in">
-      <section className="mb-10 pb-8" style={{ borderBottom: '1px solid var(--color-border)' }}>
+    <main className="max-w-3xl mx-auto px-6 md:px-12 py-10">
+      <section
+        className="mb-10 pb-8 reveal-item"
+        style={{ borderBottom: '1px solid var(--color-border)', animationDelay: '100ms' }}
+      >
         <p
           className="mono text-[10px] tracking-widest uppercase mb-3"
           style={{ color: 'var(--color-text-4)' }}
@@ -50,7 +53,7 @@ export function FullReport({ report, reportId }: { report: ReportData; reportId?
           >
             Top picks
           </p>
-          <div className="stagger">
+          <div>
             {report.topPicks.map((pick, i) => {
               const candidate = report.candidates.find((c) => c.name === pick.name)
               const triadLabel = candidate?.triadLabel
@@ -58,8 +61,11 @@ export function FullReport({ report, reportId }: { report: ReportData; reportId?
               return (
                 <div
                   key={pick.name}
-                  className="py-5 flex gap-6"
-                  style={{ borderBottom: '1px solid var(--color-border)' }}
+                  className="py-5 flex gap-6 reveal-item"
+                  style={{
+                    borderBottom: '1px solid var(--color-border)',
+                    animationDelay: `${(i + 2) * 100}ms`,
+                  }}
                 >
                   <span
                     className="mono text-xs font-bold shrink-0 w-6 pt-0.5"
@@ -139,12 +145,24 @@ export function FullReport({ report, reportId }: { report: ReportData; reportId?
           (—) indicates the source returned no data.
         </p>
         {report.candidates.map((c, i) => (
-          <CandidateRow key={c.name} c={c} index={i} />
+          <div
+            key={c.name}
+            className="reveal-item"
+            style={{ animationDelay: `${(report.topPicks.length + i + 2) * 100}ms` }}
+          >
+            <CandidateRow c={c} index={i} />
+          </div>
         ))}
       </section>
 
       {report.recommendation && (
-        <section className="mb-14 pb-10" style={{ borderBottom: '1px solid var(--color-border)' }}>
+        <section
+          className="mb-14 pb-10 reveal-item"
+          style={{
+            borderBottom: '1px solid var(--color-border)',
+            animationDelay: `${(report.topPicks.length + report.candidates.length + 2) * 100}ms`,
+          }}
+        >
           <p
             className="mono text-[10px] tracking-widest uppercase mb-3"
             style={{ color: 'var(--color-text-4)' }}
@@ -164,7 +182,12 @@ export function FullReport({ report, reportId }: { report: ReportData; reportId?
         <RejectedNames candidates={report.rejectedCandidates} />
       )}
 
-      <section className="mb-14">
+      <section
+        className="mb-14 reveal-item"
+        style={{
+          animationDelay: `${(report.topPicks.length + report.candidates.length + 3) * 100}ms`,
+        }}
+      >
         <p
           className="mono text-[10px] tracking-widest uppercase mb-4"
           style={{ color: 'var(--color-text-4)' }}

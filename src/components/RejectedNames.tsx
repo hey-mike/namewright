@@ -1,16 +1,50 @@
+'use client'
+import { useEffect, useRef, useState } from 'react'
 import type { RejectedCandidate } from '@/lib/types'
 
 export function RejectedNames({ candidates }: { candidates: RejectedCandidate[] }) {
+  const [isVisible, setIsVisible] = useState(false)
+  const sectionRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) {
+          setIsVisible(true)
+          observer.unobserve(entry.target)
+        }
+      },
+      { threshold: 0.1 }
+    )
+
+    if (sectionRef.current) {
+      observer.observe(sectionRef.current)
+    }
+
+    return () => observer.disconnect()
+  }, [])
+
   if (!candidates || candidates.length === 0) return null
 
   return (
-    <section className="mb-14 pt-10 border-t border-[#EAEAEA]">
+    <section
+      ref={sectionRef}
+      className={`mb-14 pt-10 border-t border-[#EAEAEA] transition-all duration-1000 ease-[cubic-bezier(0.16,1,0.3,1)] ${
+        isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-8'
+      }`}
+    >
       <p className="mono text-[10px] tracking-widest uppercase mb-6 text-[#787774]">
         Proof of Work — Filtered Candidates
       </p>
       <div className="space-y-6">
-        {candidates.map((c) => (
-          <div key={c.name} className="flex gap-4">
+        {candidates.map((c, i) => (
+          <div
+            key={c.name}
+            className="flex gap-4"
+            style={{
+              transitionDelay: `${i * 50}ms`,
+            }}
+          >
             <div className="shrink-0 pt-1">
               <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
                 <path

@@ -24,7 +24,7 @@ export function CandidateRow({
   const isTopPick = index === 0
 
   return (
-    <div className="card-container p-8 space-y-6 mb-6">
+    <div className="card-container candidate-card-hover p-8 space-y-6 mb-6">
       <div className="flex justify-between items-start">
         <div>
           <h3 className="serif text-4xl font-medium text-[#111111]">{c.name}</h3>

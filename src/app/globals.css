@@ -75,6 +75,73 @@ body {
 }
 
 /* Animations */
+@keyframes slide-up {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.reveal-item {
+  opacity: 0;
+  animation: slide-up 0.8s var(--ease-out) forwards;
+}
+
+.fade-in {
+  opacity: 0;
+  animation: fade-in 1.2s var(--ease-out) forwards;
+}
+
+.candidate-card-hover {
+  transition:
+    transform 0.4s var(--ease-out),
+    box-shadow 0.4s var(--ease-out);
+}
+
+@media (hover: hover) {
+  .candidate-card-hover:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.08);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  ::before,
+  ::after {
+    animation-delay: -1ms !important;
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+    background-attachment: initial !important;
+    scroll-behavior: auto !important;
+    transition-duration: 0s !important;
+    transition-delay: 0s !important;
+  }
+
+  .reveal-item,
+  .fade-in {
+    opacity: 1 !important;
+    transform: none !important;
+  }
+
+  .candidate-card-hover:hover {
+    transform: none !important;
+  }
+}
+
 @keyframes pulse-opacity {
   0%,
   100% {
